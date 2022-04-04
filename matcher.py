@@ -294,13 +294,14 @@ class Criterion(nn.Module):
         #src_boxes:x,y,z,l,w,h,r
         
         #3DIOU Loss
-#         b1 = torch.cat([src_boxes[...,0:3],src_boxes[...,4:6],src_boxes[...,3:4],(src_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
-#         b2 = torch.cat([target_boxes[...,0:3],target_boxes[...,4:6],target_boxes[...,3:4],(target_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
-#         loss_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="aligned") #for 3D GIOU (x,y,z,w,h,l,alpha) shape: B,N,7
+        b1 = torch.cat([src_boxes[...,0:3],src_boxes[...,4:6],src_boxes[...,3:4],(src_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
+        b2 = torch.cat([target_boxes[...,0:3],target_boxes[...,4:6],target_boxes[...,3:4],(target_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
+        loss_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="smallest") #for 3D GIOU (x,y,z,w,h,l,alpha) shape: B,N,7
         
-        b1 = torch.cat([src_boxes[...,0:6],(src_boxes[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
-        b2 = torch.cat([target_boxes[...,0:6],(target_boxes[...,6:7]*2-1)*np.pi],-1) 
-        loss_giou = 1-torch.diag(bbox_overlaps_3d(b1,b2, coordinate='lidar'))
+        # b1 = torch.cat([src_boxes[...,0:6],(src_boxes[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
+        # b2 = torch.cat([target_boxes[...,0:6],(target_boxes[...,6:7]*2-1)*np.pi],-1) 
+        # loss_giou = 1-torch.diag(bbox_overlaps_3d(b1,b2, coordinate='lidar'))
+        
         losses['loss_giou'] = loss_giou.sum() / num_boxes
         
         return losses
