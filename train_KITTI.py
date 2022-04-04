@@ -13,7 +13,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from itertools import chain
 from matcher import Criterion
-writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI')
+writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI2')
 
 import matplotlib.pyplot as plt
 from  matplotlib.transforms import Affine2D 
@@ -30,9 +30,12 @@ dataset = kitti_dataset(xyz_range = xyz_range,xy_voxel_size= xy_voxel_size,point
 data_loader_train = DataLoader(dataset, batch_size=batch_size,collate_fn= KITTI_collate_fn, num_workers=8, shuffle=True)
 dataloader_vis = DataLoader(dataset, batch_size=1,collate_fn= KITTI_collate_fn, num_workers=1, shuffle=True)
 
-anchor_dict = np.load("./cluster_kitti_3scales_1anchor.npy",allow_pickle=True).item()
+anchor_dict = np.load("./cluster_kitti_3scales_3anchor.npy",allow_pickle=True).item()
 model = NET_4D_EffDet(anchor_dict,n_classes=4)
-model.cuda()
+# model.cuda()
+
+model_dict = torch.load("model_KITTI.pth") 
+model.load_state_dict(model_dict["params"])
 
 criterion = Criterion(4)
 model = torch.nn.DataParallel(model, device_ids=[0])
@@ -73,8 +76,8 @@ def match_name_keywords(n, name_keywords):
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04,weight_decay=1e-04)
 # optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,weight_decay=args.weight_decay)
-# optimizer.load_state_dict(model_dict["optimizer"].state_dict())
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 200)
+optimizer.load_state_dict(model_dict["optimizer"].state_dict())
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 25)
 # scaler = torch.cuda.amp.GradScaler()
 # for output bounding box post-processing
 def box_cxcywh_to_xyxy(x):
@@ -192,7 +195,7 @@ def detect(img, pillars, coord, contains_pillars,pillar_img_pts,rgb_coors,contai
     outputs,pseudo_img,dynamic_img = model(img.cuda(),pillars.float().cuda(), coord.cuda(), contains_pillars.cuda(),pillar_img_pts.float().cuda(),rgb_coors.cuda(),contains_rgb.cuda())
     # keep only predictions with 0.7+ confidence
     probas,_ = outputs['pred_logits'][0, :, 0:].sigmoid().max(-1)
-    keep = (probas > 0.5).squeeze()
+    keep = (probas >= 0.2).squeeze()
     # convert boxes from [0; 1] to image scales
     pred_boxes = outputs['pred_boxes'][0, keep]
 
@@ -211,13 +214,13 @@ def show_model_inference():
     return fig,fig2,fig3,fig4
 
 itr=0
-# itr = model_dict["itr"]
+itr = model_dict["itr"]
 # max_norm = args.clip_max_norm
 
 model.train()
 model.cuda()
 
-for e in tqdm(range(250)):
+for e in tqdm(range(30)):
 
     for i,(img,(pillars, coord, contains_pillars),(pillar_img_pts,rgb_coors,contains_rgb),targets) in enumerate(data_loader_train):
         
@@ -258,11 +261,11 @@ for e in tqdm(range(250)):
         if itr%100==0 and itr!=0:
             torch.cuda.empty_cache()     
             
-    if e%5==0 and e!=0:
-        model_dict = {"params":model.module.state_dict(),"optimizer":optimizer,"itr":itr}
-        torch.save(model_dict,"./model_KITTI.pth")
+        if itr%1000==0 and e!=0:
+            model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"itr":itr}
+            torch.save(model_dict,"./model_KITTI.pth")
             # break
     lr_scheduler.step()
     
-model_dict = {"params":model.module.state_dict(),"optimizer":optimizer,"itr":itr}
+model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"itr":itr}
 torch.save(model_dict,"./model_KITTI.pth")

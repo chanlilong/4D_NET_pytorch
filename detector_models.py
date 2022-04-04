@@ -236,17 +236,17 @@ def inverse_sigmoid(x, eps=1e-5):
 
 class Efficient_Det(nn.Module):
     
-    def __init__(self,anchor_dictionary,n_pnts_features=128,n_classes=3,xyz_range = np.array([0,-40.32,-2,80.64,40.32,3])):
+    def __init__(self,anchor_dictionary,dims=128,n_pnts_features=128,n_classes=3,xyz_range = np.array([0,-40.32,-2,80.64,40.32,3])):
         super().__init__()
         
         #clusters_dic = {"anchor_boxes":cluster_centers,"N_anchors":N_anchors,"N_scales":N_scales}
 
         self.setup_anchors(anchor_dictionary,xyz_range)
         # self.cnn_backbone = efficientnetv2_s_backbone()
-        self.cnn_backbone = resnet_backbone()
-        self.fpn = nn.Sequential(BiFPN(256,256),BiFPN(256,256),BiFPN(256,256))
-        self.bbox_layer = nn.ModuleList([nn.Sequential(nn.Linear(256,64),nn.LeakyReLU(inplace=True),nn.LayerNorm(64),nn.Linear(64,7*self.n_anchors)) for _ in range(self.n_scales)])
-        self.clss_layer = nn.ModuleList([nn.Sequential(nn.Linear(256,64),nn.LeakyReLU(inplace=True),nn.LayerNorm(64),nn.Linear(64,n_classes*self.n_anchors)) for _ in range(self.n_scales)])
+        self.cnn_backbone = resnet_backbone(dims=dims)
+        self.fpn = nn.Sequential(BiFPN(dims,dims),BiFPN(dims,dims),BiFPN(dims,dims))
+        self.bbox_layer = nn.ModuleList([nn.Sequential(nn.Linear(dims,64),nn.LeakyReLU(inplace=True),nn.LayerNorm(64),nn.Linear(64,7*self.n_anchors)) for _ in range(self.n_scales)])
+        self.clss_layer = nn.ModuleList([nn.Sequential(nn.Linear(dims,64),nn.LeakyReLU(inplace=True),nn.LayerNorm(64),nn.Linear(64,n_classes*self.n_anchors)) for _ in range(self.n_scales)])
         self.n_classes=n_classes
         self.n_pnts_features = n_pnts_features
         

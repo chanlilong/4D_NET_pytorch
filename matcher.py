@@ -17,6 +17,9 @@ from torch import nn
 from box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 import sys
 sys.path.append("/home/conda/RAID_5_14TB/Rotated_IoU/")
+sys.path.append("/home/conda/RAID_5_14TB/mmdetection3d/")
+from mmdet3d.ops.iou3d import boxes_iou_bev
+from mmdet3d.core.bbox.iou_calculators import bbox_overlaps_3d 
 from oriented_iou_loss import cal_diou,cal_diou_3d
 import numpy as np
 import torch.distributed as dist
@@ -121,16 +124,18 @@ class HungarianMatcher(nn.Module):
             #out_bbox -> x,y,z,l,w,h,r
             
             
-#             cxcywlr1 = torch.cat([out_bbox[...,0:2],out_bbox[...,3:5],(out_bbox[...,6:]*2-1)*np.pi],-1)
-#             cxcywlr2 = torch.cat([tgt_bbox[...,0:2],tgt_bbox[...,3:5],(tgt_bbox[...,6:]*2-1)*np.pi],-1)
+            # xyxy1 = box_cxcywh_to_xyxy(torch.cat([out_bbox[...,0:2],out_bbox[...,3:5]],-1).view(-1,4))
+            # xyxy2 = box_cxcywh_to_xyxy(torch.cat([tgt_bbox[...,0:2],tgt_bbox[...,3:5]],-1).view(-1,4))
+            # xyxyr1 = torch.cat([xyxy1,(out_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
+            # xyxyr2 = torch.cat([xyxy2,(tgt_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
+            # cost_giou = -boxes_iou_bev(cxcywlr1,cxcywlr2)
             
-#             bboxes1 = self.convert_to_axisaligned(cxcywlr1)
-#             bboxes2 = self.convert_to_axisaligned(cxcywlr2)
-
-#             cost_giou = -generalized_box_iou(bboxes1,bboxes2)
+            b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
+            b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7]*2-1)*np.pi],-1) 
+            cost_giou = -bbox_overlaps_3d(b1,b2, coordinate='lidar')
             
             # + self.cost_giou * cost_giou
-            C = self.cost_bbox * cost_bbox + self.cost_class * cost_class
+            C = self.cost_bbox * cost_bbox + self.cost_class * cost_class+ self.cost_giou * cost_giou
             C = C.view(bs, num_queries, -1).cpu()
 
             sizes = [len(v["boxes"]) for v in targets]
@@ -293,7 +298,10 @@ class Criterion(nn.Module):
 #         b2 = torch.cat([target_boxes[...,0:3],target_boxes[...,4:6],target_boxes[...,3:4],(target_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
 #         loss_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="aligned") #for 3D GIOU (x,y,z,w,h,l,alpha) shape: B,N,7
         
-#         losses['loss_giou'] = loss_giou.sum() / num_boxes
+        b1 = torch.cat([src_boxes[...,0:6],(src_boxes[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
+        b2 = torch.cat([target_boxes[...,0:6],(target_boxes[...,6:7]*2-1)*np.pi],-1) 
+        loss_giou = 1-torch.diag(bbox_overlaps_3d(b1,b2, coordinate='lidar'))
+        losses['loss_giou'] = loss_giou.sum() / num_boxes
         
         return losses
 
