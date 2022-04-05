@@ -13,7 +13,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from itertools import chain
 from matcher import Criterion
-writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI_SM_maps')
+writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI_SM_maps2')
 
 import matplotlib.pyplot as plt
 from  matplotlib.transforms import Affine2D 
@@ -34,7 +34,7 @@ anchor_dict = np.load("./cluster_kitti_3scales_3anchor.npy",allow_pickle=True).i
 model = NET_4D_EffDet(anchor_dict,n_classes=4)
 model.cuda()
 
-# model_dict = torch.load("model_KITTI_old.pth") 
+# model_dict = torch.load("model_KITTI.pth") 
 # model.load_state_dict(model_dict["params"],strict=False)
 
 criterion = Criterion(4)
@@ -51,7 +51,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04,weight_decay=1e-03)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 25)
 # lr_scheduler = model_dict["scheduler"]
 # lr_scheduler.cuda()
-scaler = torch.cuda.amp.GradScaler()
+# scaler = torch.cuda.amp.GradScaler()
 # for output bounding box post-processing
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = x.unbind(1)
@@ -234,7 +234,7 @@ for e in tqdm(range(30)):
         if itr%50==0 and itr!=0:
             torch.cuda.empty_cache()     
             
-        if itr%1000==0 and e!=0:
+        if itr%500==0 and e!=0:
             model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler,"itr":itr}
             torch.save(model_dict,"./model_KITTI.pth")
             # break

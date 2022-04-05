@@ -196,7 +196,7 @@ class kitti_dataset(Dataset):
         outputs["labels"] = torch.tensor(classes_int,dtype=torch.int).long()
         
         img = cv2.resize(img,(W//2,H//2))/255.0
-        img = torch.as_tensor(img,dtype=torch.float32).permute(2,1,0)
+        img = torch.as_tensor(img,dtype=torch.float32).permute(2,0,1)
         return img,(pillars, coord, contains_pillars),(pillar_img_pts2,rgb_coors,contains_rgb),outputs
 
 

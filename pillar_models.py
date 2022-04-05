@@ -148,12 +148,12 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
             this_coords = filtered_coors[idx1:idx2].long()
             indices = this_coords[:,1]*self.xsize +this_coords[:,2]
             batch_pillar =filtered_outs[idx1:idx2].type(pillars.type())
-            dynamic_outs = self.dynamic_layer(batch_pillar)
+            dynamic_outs = self.dynamic_layer(batch_pillar).softmax(1)
             pseudo_img[batch_idx][indices.long(),:] += batch_pillar
             dynamic_img[batch_idx][indices.long(),:] += dynamic_outs.type(pillars.type())
         
         pseudo_img = pseudo_img.view(batch,self.xsize,self.ysize,n_features).permute(0,3,1,2)
-        dynamic_img = dynamic_img.view(batch,self.xsize,self.ysize,3).permute(0,3,1,2).softmax(1) #B,3,H,W
+        dynamic_img = dynamic_img.view(batch,self.xsize,self.ysize,3).permute(0,3,1,2) #B,3,H,W
         return pseudo_img,dynamic_img
     
 class RGB_Net(torch.nn.Module):
@@ -167,7 +167,7 @@ class RGB_Net(torch.nn.Module):
         
     def forward(self,RGB,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb):
         rgb_out = self.cnn(RGB)
-        _,_,c3,c4,c5 = self.fpn(rgb_out)
+        _,c3,_,c4,c5 = self.fpn(rgb_out)
         batch,C,_,_ = c3.shape
         pseudo_rgb_imga = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
         pseudo_rgb_imgb = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
@@ -177,7 +177,7 @@ class RGB_Net(torch.nn.Module):
         # 
         
         for batch_i,(a,b,c,pnts_2d,coors,contain) in enumerate(zip(c3,c4,c5,pillar_img_pts,rgb_coors,contains_rgb)):
-            pseudo_rgb_img_filter = torch.zeros(1, self.xsize , self.ysize,2).to(RGB.device).type(RGB.type())
+            pseudo_rgb_img_filter = torch.ones(1, self.xsize , self.ysize,2).to(RGB.device).type(RGB.type())*-2
             mask = torch.zeros(1, 1, self.xsize , self.ysize).to(RGB.device).type(RGB.type())
             
             contain_filter = contain.to(torch.bool)
@@ -187,9 +187,9 @@ class RGB_Net(torch.nn.Module):
             pseudo_rgb_img_filter[0,coord[:,1],coord[:,2],:] = float_indexer
             mask[0,:,coord[:,1],coord[:,2]] = 1
 
-            pseudo_rgb_imga[batch_i] = grid_sample(a.unsqueeze(0),pseudo_rgb_img_filter)*mask
-            pseudo_rgb_imgb[batch_i] = grid_sample(b.unsqueeze(0),pseudo_rgb_img_filter)*mask
-            pseudo_rgb_imgc[batch_i] = grid_sample(c.unsqueeze(0),pseudo_rgb_img_filter)*mask
+            pseudo_rgb_imga[batch_i] = grid_sample(a.unsqueeze(0),pseudo_rgb_img_filter,align_corners=True)*mask
+            pseudo_rgb_imgb[batch_i] = grid_sample(b.unsqueeze(0),pseudo_rgb_img_filter,align_corners=True)*mask
+            pseudo_rgb_imgc[batch_i] = grid_sample(c.unsqueeze(0),pseudo_rgb_img_filter,align_corners=True)*mask
             
         pseudo_rgb_img = (pseudo_rgb_imga*dynamic_img[:,0:1]) + (pseudo_rgb_imgb*dynamic_img[:,1:2]) + (pseudo_rgb_imgc*dynamic_img[:,2:3])
         return pseudo_rgb_img
