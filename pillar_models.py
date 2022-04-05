@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 # from util.misc import nested_tensor_from_tensor_list,NestedTensor
 # from models import build_model
-from detector_models import Efficient_Det,resnet_backbone,BiFPN
+from detector_models import Efficient_Det,resnet_backbone,BiFPN,SELayer
 
 class Pointnet_Resblock(torch.nn.Module):
     def __init__(self,in_channels,out_channels,n_pnts_pillar,last=False):
@@ -128,7 +128,8 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
         self.xsize = xsize
         self.ysize = ysize
         self.xsize,self.ysize = int(self.xsize)+1,int(self.ysize)+1 
-        self.dynamic_layer = torch.nn.Linear(64,64)
+        self.dynamic_layer = torch.nn.Linear(64,3) #3 scales
+        # self.dynamic_se_layer = SELayer(3, reduction=3)
         
     def forward(self,pillars,coord,contains_pillars):
         batch,n_pillars,n_features = pillars.shape #torch.Size([4, 16384, 64])
@@ -136,7 +137,7 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
         filtered_outs = pillars[masks.view(batch,-1)]# torch.Size([11944, 64])
         filtered_coors = coord[masks.view(batch,-1)]
         pseudo_img = torch.zeros(batch,self.xsize * self.ysize ,n_features).to(pillars.device).type(pillars.type())
-        dynamic_img = torch.zeros(batch,self.xsize * self.ysize ,n_features).to(pillars.device).type(pillars.type())
+        dynamic_img = torch.zeros(batch,self.xsize * self.ysize ,3).to(pillars.device).type(pillars.type())
         interval_temp = contains_pillars.sum(1).cumsum(0)
         interval = torch.zeros(contains_pillars.shape[0]+1).to(pillars.device).type(pillars.type())
         interval[1:] = interval_temp
@@ -146,12 +147,12 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
             this_coords = filtered_coors[idx1:idx2].long()
             indices = this_coords[:,1]*self.xsize +this_coords[:,2]
             batch_pillar =filtered_outs[idx1:idx2].type(pillars.type())
-            dynamic_outs = self.dynamic_layer(batch_pillar).softmax(0)
+            dynamic_outs = self.dynamic_layer(batch_pillar)
             pseudo_img[batch_idx][indices.long(),:] += batch_pillar
             dynamic_img[batch_idx][indices.long(),:] += dynamic_outs.type(pillars.type())
         
         pseudo_img = pseudo_img.view(batch,self.xsize,self.ysize,n_features).permute(0,3,1,2)
-        dynamic_img = dynamic_img.view(batch,self.xsize,self.ysize,n_features).permute(0,3,1,2)
+        dynamic_img = dynamic_img.view(batch,self.xsize,self.ysize,3).permute(0,3,1,2).softmax(1) #B,3,H,W
         return pseudo_img,dynamic_img
     
 class RGB_Net(torch.nn.Module):
@@ -170,7 +171,7 @@ class RGB_Net(torch.nn.Module):
         
     def forward(self,RGB,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb):
         rgb_out = self.cnn(RGB)
-        _,_,c3,c4,c5 = self.fpn(rgb_out)
+        _,c3,_,c4,c5 = self.fpn(rgb_out)
         batch,C,_,_ = c3.shape
         pseudo_rgb_imga = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
         pseudo_rgb_imgb = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
@@ -189,14 +190,14 @@ class RGB_Net(torch.nn.Module):
             pseudo_rgb_imgb[batch_i,:,coord[:,1],coord[:,2]] += (b[:,i4[:,0],i4[:,1]])
             pseudo_rgb_imgc[batch_i,:,coord[:,1],coord[:,2]] += (c[:,i5[:,0],i5[:,1]])
             
-        pseudo_rgb_img = (pseudo_rgb_imga*dynamic_img) + (pseudo_rgb_imgb*dynamic_img) + (pseudo_rgb_imgc*dynamic_img)
+        pseudo_rgb_img = (pseudo_rgb_imga*dynamic_img[:,0:1]) + (pseudo_rgb_imgb*dynamic_img[:,1:2]) + (pseudo_rgb_imgc*dynamic_img[:,2:3])
         return pseudo_rgb_img    
     
 class NET_4D_EffDet(torch.nn.Module):
     def __init__(self,anchor_dict,n_input_features = 9,n_features = 64,n_pnt_pillar = 100, xyz_range = np.array([0,-40.32,-2,80.64,40.32,3]), 
                   xy_voxel_size= np.array([0.16,0.16]),n_classes=3):
         super().__init__()
-        
+        # self.dummy_param = nn.Parameter(torch.empty(0))
         self.voxel_x_grid_size = int((xyz_range[3] - xyz_range[0])//xy_voxel_size[0])
         self.voxel_y_grid_size = int((xyz_range[4] - xyz_range[1])//xy_voxel_size[1])
         
@@ -207,7 +208,7 @@ class NET_4D_EffDet(torch.nn.Module):
         self.rgb_net = RGB_Net(self.voxel_x_grid_size,self.voxel_y_grid_size)
     
     def forward(self,img,pillar,coord,contains_pillars,pillar_img_pts,rgb_coors,contains_rgb):
-    
+
         learned_pillars = self.pillar_net(pillar)
         pseudo_img_pillar,dynamic_img = self.pillar_to_img(learned_pillars,coord,contains_pillars)
         pseudo_rgb_img = self.rgb_net(img,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb)
