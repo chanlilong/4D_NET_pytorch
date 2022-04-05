@@ -5,6 +5,7 @@ import numpy as np
 # from util.misc import nested_tensor_from_tensor_list,NestedTensor
 # from models import build_model
 from detector_models import Efficient_Det,resnet_backbone,BiFPN,SELayer
+from torch.nn.functional import grid_sample
 
 class Pointnet_Resblock(torch.nn.Module):
     def __init__(self,in_channels,out_channels,n_pnts_pillar,last=False):
@@ -156,42 +157,80 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
         return pseudo_img,dynamic_img
     
 class RGB_Net(torch.nn.Module):
-    '''
-    Neural Network that takes RGB and Dynamic weights as input along with relvant pillar indexes (pillar_img_pts,rgb_coors,contains_rgb)
-    This neural network will return a pseudo img with RGB image features
-    this pseudo img is meant to be concatenated with pointpillar's pseudo image to form a fusion feature (RGB+Pointcloud)
-    '''
+
     def __init__(self,xsize,ysize):
         super().__init__()
-        self.xsize = xsize
-        self.ysize = ysize
-        self.xsize,self.ysize = int(self.xsize)+1,int(self.ysize)+1 
+        self.xsize = xsize+1
+        self.ysize = ysize+1
         self.cnn = resnet_backbone(dims=64)
         self.fpn = BiFPN(64,64)
         
     def forward(self,RGB,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb):
         rgb_out = self.cnn(RGB)
-        _,c3,_,c4,c5 = self.fpn(rgb_out)
+        _,_,c3,c4,c5 = self.fpn(rgb_out)
         batch,C,_,_ = c3.shape
         pseudo_rgb_imga = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
         pseudo_rgb_imgb = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
         pseudo_rgb_imgc = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
-
+        
         # c3.shape,c4.shape,c5.shape(torch.Size([1, 64, 78, 24]),torch.Size([1, 64, 39, 12]),torch.Size([1, 64, 20, 6]))
         # 
         
         for batch_i,(a,b,c,pnts_2d,coors,contain) in enumerate(zip(c3,c4,c5,pillar_img_pts,rgb_coors,contains_rgb)):
+            pseudo_rgb_img_filter = torch.zeros(1, self.xsize , self.ysize,2).to(RGB.device).type(RGB.type())
+            mask = torch.zeros(1, 1, self.xsize , self.ysize).to(RGB.device).type(RGB.type())
+            
             contain_filter = contain.to(torch.bool)
-            i3 = (pnts_2d[contain_filter]*(torch.tensor([*c3.shape[2:]]).to(RGB.device))).to(torch.int64) #Convert 2D img indexer pnts_2d(0->1) to match the cnn feature
-            i4 = (pnts_2d[contain_filter]*(torch.tensor([*c4.shape[2:]]).to(RGB.device))).to(torch.int64)
-            i5 = (pnts_2d[contain_filter]*(torch.tensor([*c5.shape[2:]]).to(RGB.device))).to(torch.int64)
+            float_indexer = (pnts_2d[contain_filter]*2-1)
+
             coord = coors[contain_filter].to(torch.int64) # n_pillar,2
-            pseudo_rgb_imga[batch_i,:,coord[:,1],coord[:,2]] += (a[:,i3[:,0],i3[:,1]])
-            pseudo_rgb_imgb[batch_i,:,coord[:,1],coord[:,2]] += (b[:,i4[:,0],i4[:,1]])
-            pseudo_rgb_imgc[batch_i,:,coord[:,1],coord[:,2]] += (c[:,i5[:,0],i5[:,1]])
+            pseudo_rgb_img_filter[0,coord[:,1],coord[:,2],:] = float_indexer
+            mask[0,:,coord[:,1],coord[:,2]] = 1
+
+            pseudo_rgb_imga[batch_i] = grid_sample(a.unsqueeze(0),pseudo_rgb_img_filter)*mask
+            pseudo_rgb_imgb[batch_i] = grid_sample(b.unsqueeze(0),pseudo_rgb_img_filter)*mask
+            pseudo_rgb_imgc[batch_i] = grid_sample(c.unsqueeze(0),pseudo_rgb_img_filter)*mask
             
         pseudo_rgb_img = (pseudo_rgb_imga*dynamic_img[:,0:1]) + (pseudo_rgb_imgb*dynamic_img[:,1:2]) + (pseudo_rgb_imgc*dynamic_img[:,2:3])
-        return pseudo_rgb_img    
+        return pseudo_rgb_img
+    
+# class RGB_Net(torch.nn.Module):
+#     '''
+#     Neural Network that takes RGB and Dynamic weights as input along with relvant pillar indexes (pillar_img_pts,rgb_coors,contains_rgb)
+#     This neural network will return a pseudo img with RGB image features
+#     this pseudo img is meant to be concatenated with pointpillar's pseudo image to form a fusion feature (RGB+Pointcloud)
+#     '''
+#     def __init__(self,xsize,ysize):
+#         super().__init__()
+#         self.xsize = xsize
+#         self.ysize = ysize
+#         self.xsize,self.ysize = int(self.xsize)+1,int(self.ysize)+1 
+#         self.cnn = resnet_backbone(dims=64)
+#         self.fpn = BiFPN(64,64)
+        
+#     def forward(self,RGB,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb):
+#         rgb_out = self.cnn(RGB)
+#         _,c3,_,c4,c5 = self.fpn(rgb_out)
+#         batch,C,_,_ = c3.shape
+#         pseudo_rgb_imga = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
+#         pseudo_rgb_imgb = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
+#         pseudo_rgb_imgc = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
+
+#         # c3.shape,c4.shape,c5.shape(torch.Size([1, 64, 78, 24]),torch.Size([1, 64, 39, 12]),torch.Size([1, 64, 20, 6]))
+#         # 
+        
+#         for batch_i,(a,b,c,pnts_2d,coors,contain) in enumerate(zip(c3,c4,c5,pillar_img_pts,rgb_coors,contains_rgb)):
+#             contain_filter = contain.to(torch.bool)
+#             i3 = (pnts_2d[contain_filter]*(torch.tensor([*c3.shape[2:]]).to(RGB.device))).to(torch.int64) #Convert 2D img indexer pnts_2d(0->1) to match the cnn feature
+#             i4 = (pnts_2d[contain_filter]*(torch.tensor([*c4.shape[2:]]).to(RGB.device))).to(torch.int64)
+#             i5 = (pnts_2d[contain_filter]*(torch.tensor([*c5.shape[2:]]).to(RGB.device))).to(torch.int64)
+#             coord = coors[contain_filter].to(torch.int64) # n_pillar,2
+#             pseudo_rgb_imga[batch_i,:,coord[:,1],coord[:,2]] += (a[:,i3[:,0],i3[:,1]])
+#             pseudo_rgb_imgb[batch_i,:,coord[:,1],coord[:,2]] += (b[:,i4[:,0],i4[:,1]])
+#             pseudo_rgb_imgc[batch_i,:,coord[:,1],coord[:,2]] += (c[:,i5[:,0],i5[:,1]])
+            
+#         pseudo_rgb_img = (pseudo_rgb_imga*dynamic_img[:,0:1]) + (pseudo_rgb_imgb*dynamic_img[:,1:2]) + (pseudo_rgb_imgc*dynamic_img[:,2:3])
+#         return pseudo_rgb_img    
     
 class NET_4D_EffDet(torch.nn.Module):
     def __init__(self,anchor_dict,n_input_features = 9,n_features = 64,n_pnt_pillar = 100, xyz_range = np.array([0,-40.32,-2,80.64,40.32,3]), 
