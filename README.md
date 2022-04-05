@@ -7,7 +7,7 @@
 
 
 ## Model Details 
-![PseudoImages](./images/4dnet.png)
+![PseudoImages](./images/4dnet2.png)
 - The Model consist of a PointNet Processing model, an RGB Processing Model, PseudoImage Scattering Layer and a Efficient-Det style Single Shot Detector as object detection head
 - During Training, the Pseudo Images will look like this in Tensorboard and important objects should get more pronounced
 - For matching the targets to predicted outputs, i used a hungarian matcher used in DETR/Deformable-DETR
