@@ -29,7 +29,7 @@ class kitti_dataset(Dataset):
     
     def __init__(self, root = "/home/conda/RAID_5_14TB/DATASETS/KITTI_dataset/training/",
                 xyz_range = np.array([0,-40.32,-2,80.64,40.32,3]),
-                xy_voxel_size= np.array([0.16,0.16]),points_per_pillar = 100,n_pillars=12000):
+                xy_voxel_size= np.array([0.16,0.16]),points_per_pillar = 100,n_pillars=12000,return_calib=False):
         super(kitti_dataset, self).__init__()
 
         test_set_names = np.load("testset_names.npy")
@@ -39,6 +39,7 @@ class kitti_dataset(Dataset):
         calib_root = root+"calib/"
         pc_filenames = glob.glob(pc_root+"*.bin")
         frame_names = [x.split("/")[-1].split('.')[0] for x in pc_filenames]
+        self.return_calib = return_calib
 
         self.images_train = [images_root+f"{x}.png" for x in frame_names if x not in test_set_names]
         self.pc_filenames_train = [pc_root+f"{x}.bin" for x in frame_names if x not in test_set_names]
@@ -66,7 +67,7 @@ class kitti_dataset(Dataset):
                            "Misc":              3,
                         }
 
-        
+        self.col_names =  ["type","truncated","occluded","alpha","x1","y1","x2","y2","h","w","l","x","y","z","yaw"]
     @staticmethod
     def transform_labels_into_lidar_coordinates(labels: List[Label3D], R: np.ndarray, t: np.ndarray):
         """
@@ -170,16 +171,16 @@ class kitti_dataset(Dataset):
         pillars[...,7] = pillars[...,7] / (self.xyz_range[4]-self.xyz_range[1])
         pillars[...,8] = pillars[...,8] / (self.xyz_range[5]-self.xyz_range[2])
 
-        
-#         # get label
-        label = KittiDataReader.read_label(label_file)
-        R, t = self.get_calib(idx)
+        label = pd.read_csv(label_file,header=None,sep=" ")
+        label.columns = self.col_names
+        df = label[["type","z","x","y","w","l","h","yaw"]]
+        df.columns = ["type","x","y","z","w","l","h","yaw"]
+        df["y"] *= -1
+        df = df[df["type"]!="DontCare"]
 
-        label_transformed = self.transform_labels_into_lidar_coordinates(label, R, t) 
+        classes_int =[self.classes[l] for l in df["type"].values]
         
-        pts = [np.concatenate([l.centroid.reshape(-1,1), l.dimension.reshape(-1,1),np.asarray(l.yaw).reshape(-1,1)],axis=0) for l in label_transformed]
-        classes_int =[self.classes[l.classification] for l in label_transformed]
-        
+        pts = df.iloc[:,1:].values
         boxes = torch.as_tensor(pts).view(-1,7).float() 
 
         #===============================[NORMALIZE ALL TARGETS TO BETWEEN 0-1]==================================================#
@@ -194,11 +195,15 @@ class kitti_dataset(Dataset):
         outputs = {}
         outputs["boxes"] = boxes
         outputs["labels"] = torch.tensor(classes_int,dtype=torch.int).long()
+        # outputs["idx"] = idx
         
         img = cv2.resize(img,(W//2,H//2))/255.0
         img = torch.as_tensor(img,dtype=torch.float32).permute(2,0,1)
-        return img,(pillars, coord, contains_pillars),(pillar_img_pts2,rgb_coors,contains_rgb),outputs
-
+        
+        if self.return_calib:
+            return img,(pillars, coord, contains_pillars),(pillar_img_pts2,rgb_coors,contains_rgb),outputs,calib
+        else:
+            return img,(pillars, coord, contains_pillars),(pillar_img_pts2,rgb_coors,contains_rgb),outputs
 
     def __len__(self):
         return len(self.pc_filenames_train)
@@ -220,3 +225,21 @@ def KITTI_collate_fn(data):
 
     
     return imgs,[pillars,coords,contains_pillars],[rgbpillars,rgbcoords,rgbcontains_pillars], [x for x in outputs]
+
+def KITTI_collate_fn_Wcalib(data):
+    """
+        Collate Function for NOAA so that Input/Targets can be concatenated
+    """
+    imgs,pillar_batch,rgb_batch,outputs,calibs = zip(*data)
+    
+    imgs = torch.cat([im.unsqueeze(0) for im in imgs])
+    pillars = torch.stack([torch.as_tensor(p[0]) for p in pillar_batch])
+    coords = torch.stack([torch.as_tensor(p[1]) for p in pillar_batch])
+    contains_pillars = torch.stack([torch.as_tensor(p[2]) for p in pillar_batch])
+    
+    rgbpillars = torch.stack([torch.as_tensor(p[0]) for p in rgb_batch])
+    rgbcoords = torch.stack([torch.as_tensor(p[1]) for p in rgb_batch])
+    rgbcontains_pillars = torch.stack([torch.as_tensor(p[2]) for p in rgb_batch])
+
+    
+    return imgs,[pillars,coords,contains_pillars],[rgbpillars,rgbcoords,rgbcontains_pillars], [x for x in outputs], [x for x in calibs]

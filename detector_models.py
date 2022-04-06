@@ -274,7 +274,7 @@ class Efficient_Det(nn.Module):
         
         self.anchors = torch.as_tensor(self.anchors[::-1].copy(),dtype=torch.float32)
         self.anchors = self.anchors.view(self.n_scales,self.n_anchors,3)
-        self.anchors = torch.nn.parameter.Parameter(self.anchors, requires_grad=True).float()
+        # self.anchors = torch.nn.parameter.Parameter(self.anchors, requires_grad=True).float()
         # print(self.anchors)
     def forward(self,x):
         
