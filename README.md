@@ -5,9 +5,11 @@
     - I may have missed out some stuff from the paper
 - Feel free to download this repo and implement the temporal elements yourself
 
+## Visual Results
+![visual_result](./images/4dnet_visual.png)
 
 ## Model Details 
-![PseudoImages](./images/4dnet2.png)
+![4dnet](./images/4dnet2.png)
 - The Model consist of a PointNet Processing model, an RGB Processing Model, PseudoImage Scattering Layer and a Efficient-Det style Single Shot Detector as object detection head
 - During Training, the Pseudo Images will look like this in Tensorboard and important objects should get more pronounced
 - For matching the targets to predicted outputs, i used a hungarian matcher used in DETR/Deformable-DETR
@@ -15,6 +17,10 @@
     - These coordinates are used to grab the CNN features from the RGB Image to create a sepearte Pseudo Image
     - This is then concatenated with the LiDAR Point Pillars Pseudo Image later
 ![PseudoImages](./images/pseudoimg.png)
+
+## Anchorbox Calculation
+- K-Means analysis of ground truth boxes are used
+- Look at Stats.ipynb
 
 ## How to Train
 - Edit the dataset root location in train_KITTI.py:

@@ -52,6 +52,52 @@ class resnet_backbone(torch.nn.Module):
             self.activation = {}
 
             return self.conv0(l1),self.conv1(F.interpolate(l1,scale_factor=0.75)),self.conv2(l2),self.conv3(l3),self.conv4(l4)
+from deformable_conv import DeformableConv2d        
+class deform_resnet_backbone(torch.nn.Module):
+    def __init__(self,single_scale=False,dims=256):
+        super().__init__()
+        self.model = timm.create_model('resnet50', pretrained=True)
+        
+        self.activation = {}
+#         self.layer_names = [f"layer{i+1}" for i in range(4)]
+        self.single_scale = single_scale
+        if single_scale:
+            self.model.layer4.register_forward_hook(self.get_activation('layer4'))
+            self.conv4 = torch.nn.Conv2d(2048,dims,1,1)
+        else:
+            self.model.layer4.register_forward_hook(self.get_activation('layer4'))
+            self.model.layer3.register_forward_hook(self.get_activation('layer3'))
+            self.model.layer2.register_forward_hook(self.get_activation('layer2'))
+            self.model.layer1.register_forward_hook(self.get_activation('layer1'))
+            
+            self.conv4 = DeformableConv2d(2048,dims,3)
+            self.conv3 = DeformableConv2d(1024,dims,3)
+            self.conv2 = DeformableConv2d(512,dims,3)
+            self.conv1 = DeformableConv2d(256,dims,3)
+            self.conv0 = DeformableConv2d(256,dims,3)
+        
+    def get_activation(self,name):
+        def hook(model, input, output):
+            self.activation[name] = output
+        return hook
+        
+    def forward(self,x):
+        _ = self.model.forward_features(x)
+        
+        if self.single_scale:
+            l4 = self.activation["layer4"].to(x.device)
+            self.activation = {}
+
+            return self.conv4(l4)
+        else:
+            l1 = self.activation["layer1"].to(x.device) 
+            l2 = self.activation["layer2"].to(x.device)
+            l3 = self.activation["layer3"].to(x.device) 
+            l4 = self.activation["layer4"].to(x.device)
+        
+            self.activation = {}
+
+            return self.conv0(l1),self.conv1(F.interpolate(l1,scale_factor=0.75)),self.conv2(l2),self.conv3(l3),self.conv4(l4)   
         
 class efficientnetv2_s_backbone(torch.nn.Module):
     def __init__(self,single_scale=False,dims=256):

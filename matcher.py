@@ -124,15 +124,15 @@ class HungarianMatcher(nn.Module):
             #out_bbox -> x,y,z,l,w,h,r
             
             
-            xyxy1 = box_cxcywh_to_xyxy(torch.cat([out_bbox[...,0:2],out_bbox[...,3:5]],-1).view(-1,4))
-            xyxy2 = box_cxcywh_to_xyxy(torch.cat([tgt_bbox[...,0:2],tgt_bbox[...,3:5]],-1).view(-1,4))
-            xyxyr1 = torch.cat([xyxy1,(out_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
-            xyxyr2 = torch.cat([xyxy2,(tgt_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
-            cost_giou = -boxes_iou_bev(xyxyr1,xyxyr2)
+            # xyxy1 = box_cxcywh_to_xyxy(torch.cat([out_bbox[...,0:2],out_bbox[...,3:5]],-1).view(-1,4))
+            # xyxy2 = box_cxcywh_to_xyxy(torch.cat([tgt_bbox[...,0:2],tgt_bbox[...,3:5]],-1).view(-1,4))
+            # xyxyr1 = torch.cat([xyxy1,(out_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
+            # xyxyr2 = torch.cat([xyxy2,(tgt_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
+            # cost_giou = -boxes_iou_bev(xyxyr1,xyxyr2)
             
-            # b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
-            # b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7]*2-1)*np.pi],-1) 
-            # cost_giou = -bbox_overlaps_3d(b1,b2, coordinate='lidar')
+            b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
+            b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7]*2-1)*np.pi],-1) 
+            cost_giou = -bbox_overlaps_3d(b1,b2, coordinate='lidar')
             
             # + self.cost_giou * cost_giou
             C = self.cost_bbox * cost_bbox + self.cost_class * cost_class+ self.cost_giou * cost_giou
@@ -288,16 +288,16 @@ class Criterion(nn.Module):
         b1 = torch.cat([src_boxes[...,0:3],src_boxes[...,4:6],src_boxes[...,3:4],(src_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
         b2 = torch.cat([target_boxes[...,0:3],target_boxes[...,4:6],target_boxes[...,3:4],(target_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
         loss_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="smallest") #for 3D GIOU (x,y,z,w,h,l,alpha) shape: B,N,7
-        xyxy1 = box_cxcywh_to_xyxy(torch.cat([src_boxes[...,0:2],src_boxes[...,3:5]],-1).view(-1,4))
-        xyxy2 = box_cxcywh_to_xyxy(torch.cat([target_boxes[...,0:2],target_boxes[...,3:5]],-1).view(-1,4))
-        xyxyr1 = torch.cat([xyxy1,(src_boxes[...,6:]*2-1)*np.pi],-1).view(-1,5)
-        xyxyr2 = torch.cat([xyxy2,(target_boxes[...,6:]*2-1)*np.pi],-1).view(-1,5)
-        loss_bev = 1-torch.diag(boxes_iou_bev(xyxyr1,xyxyr2))
+        # xyxy1 = box_cxcywh_to_xyxy(torch.cat([src_boxes[...,0:2],src_boxes[...,3:5]],-1).view(-1,4))
+        # xyxy2 = box_cxcywh_to_xyxy(torch.cat([target_boxes[...,0:2],target_boxes[...,3:5]],-1).view(-1,4))
+        # xyxyr1 = torch.cat([xyxy1,(src_boxes[...,6:]*2-1)*np.pi],-1).view(-1,5)
+        # xyxyr2 = torch.cat([xyxy2,(target_boxes[...,6:]*2-1)*np.pi],-1).view(-1,5)
+        # loss_bev = 1-torch.diag(boxes_iou_bev(xyxyr1,xyxyr2))
         # b1 = torch.cat([src_boxes[...,0:6],(src_boxes[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
         # b2 = torch.cat([target_boxes[...,0:6],(target_boxes[...,6:7]*2-1)*np.pi],-1) 
         # loss_giou = 1-torch.diag(bbox_overlaps_3d(b1,b2, coordinate='lidar'))
         
-        losses['loss_giou'] = ((loss_giou.sum() / num_boxes) + (loss_bev.sum() / num_boxes))*0.5
+        losses['loss_giou'] = ((loss_giou.sum() / num_boxes) )
         
         return losses
 

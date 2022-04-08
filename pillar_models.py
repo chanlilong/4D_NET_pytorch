@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 # from util.misc import nested_tensor_from_tensor_list,NestedTensor
 # from models import build_model
-from detector_models import Efficient_Det,resnet_backbone,BiFPN,SELayer
+from detector_models import Efficient_Det,resnet_backbone,BiFPN,SELayer,deform_resnet_backbone
 from torch.nn.functional import grid_sample
 
 class Pointnet_Resblock(torch.nn.Module):
@@ -156,13 +156,19 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
         dynamic_img = dynamic_img.view(batch,self.xsize,self.ysize,3).permute(0,3,1,2) #B,3,H,W
         return pseudo_img,dynamic_img
     
+from deformable_conv import DeformableConv2d
+
 class RGB_Net(torch.nn.Module):
 
-    def __init__(self,xsize,ysize):
+    def __init__(self,xsize,ysize,deform=False):
         super().__init__()
         self.xsize = xsize+1
         self.ysize = ysize+1
         self.cnn = resnet_backbone(dims=64)
+        if deform:
+            self.cnn = deform_resnet_backbone(dims=64)
+        else:
+            self.cnn = resnet_backbone(dims=64)
         self.fpn = BiFPN(64,64)
         
     def forward(self,RGB,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb):
@@ -234,7 +240,7 @@ class RGB_Net(torch.nn.Module):
     
 class NET_4D_EffDet(torch.nn.Module):
     def __init__(self,anchor_dict,n_input_features = 9,n_features = 64,n_pnt_pillar = 100, xyz_range = np.array([0,-40.32,-2,80.64,40.32,3]), 
-                  xy_voxel_size= np.array([0.16,0.16]),n_classes=3):
+                  xy_voxel_size= np.array([0.16,0.16]),n_classes=3,rgb_deform=False):
         super().__init__()
         # self.dummy_param = nn.Parameter(torch.empty(0))
         self.voxel_x_grid_size = int((xyz_range[3] - xyz_range[0])//xy_voxel_size[0])
@@ -244,7 +250,7 @@ class NET_4D_EffDet(torch.nn.Module):
         self.SSD = Efficient_Det(anchor_dict,n_pnts_features=128,n_classes=n_classes,xyz_range=xyz_range)
         self.pillar_net = Pillar_Network_SECOND(input_features = n_input_features, n_features=n_features,n_pnts_pillar=n_pnt_pillar)
         self.pillar_to_img = Pseudo_IMG_Scatter_Pillar(self.voxel_x_grid_size,self.voxel_y_grid_size)
-        self.rgb_net = RGB_Net(self.voxel_x_grid_size,self.voxel_y_grid_size)
+        self.rgb_net = RGB_Net(self.voxel_x_grid_size,self.voxel_y_grid_size,deform=rgb_deform)
     
     def forward(self,img,pillar,coord,contains_pillars,pillar_img_pts,rgb_coors,contains_rgb):
 
