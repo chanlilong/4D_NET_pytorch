@@ -13,7 +13,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from itertools import chain
 from matcher import Criterion
-writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI')
+writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI_exp')
 
 import matplotlib.pyplot as plt
 from  matplotlib.transforms import Affine2D 
@@ -37,8 +37,8 @@ anchor_dict = np.load("./cluster_kitti_3scales_3anchor.npy",allow_pickle=True).i
 model = NET_4D_EffDet(anchor_dict,n_classes=4)
 
 
-# model_dict = torch.load("./weights/model_KITTI.pth") 
-# model.load_state_dict(model_dict["params"],strict=False)
+model_dict = torch.load("./weights/model_KITTI_exp.pth") 
+model.load_state_dict(model_dict["params"],strict=False)
 
 criterion = Criterion(4)
 model = torch.nn.DataParallel(model, device_ids=[0,1])
@@ -48,10 +48,11 @@ print('number of params:', n_parameters)
 
 
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04,weight_decay=1e-03)
-# optimizer.load_state_dict(model_dict["optimizer"])
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04)
+optimizer.load_state_dict(model_dict["optimizer"])
 # optimizer.cuda()
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 35)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 45)
+lr_scheduler.load_state_dict(model_dict["scheduler"])
 # lr_scheduler = model_dict["scheduler"]
 # lr_scheduler.cuda()
 # scaler = torch.cuda.amp.GradScaler()
@@ -153,21 +154,21 @@ def draw_projected_box3d(image, qs, color=(255, 255, 255), thickness=2):
     return image    
 
 def return_scaled_boxes(boxes,tgt_boxes,xyz_range):
-    boxes[:,0] = boxes[:,0]*((xyz_range[3]-xyz_range[0]))+xyz_range[0]
-    boxes[:,1] = boxes[:,1]*((xyz_range[4]-xyz_range[1]))+xyz_range[1]
-    boxes[:,2] = boxes[:,2]*((xyz_range[5]-xyz_range[2]))+xyz_range[2]
-    boxes[:,3] = boxes[:,3]*((xyz_range[3]-xyz_range[0]))
-    boxes[:,4] = boxes[:,4]*((xyz_range[4]-xyz_range[1]))
-    boxes[:,5] = boxes[:,5]*((xyz_range[5]-xyz_range[2]))
-    boxes[:,6] = (boxes[:,6]*2 - 1)*np.pi
+    # boxes[:,0] = boxes[:,0]
+    # boxes[:,1] = boxes[:,1]
+    # boxes[:,2] = boxes[:,2]
+    # boxes[:,3] = boxes[:,3]
+    # boxes[:,4] = boxes[:,4]
+    # boxes[:,5] = boxes[:,5]
+    # boxes[:,6] = (boxes[:,6])*np.pi
 
-    tgt_boxes[:,0] = tgt_boxes[:,0]*((xyz_range[3]-xyz_range[0]))+xyz_range[0]
-    tgt_boxes[:,1] = tgt_boxes[:,1]*((xyz_range[4]-xyz_range[1]))+xyz_range[1]
-    tgt_boxes[:,2] = tgt_boxes[:,2]*((xyz_range[5]-xyz_range[2]))+xyz_range[2]
-    tgt_boxes[:,3] = tgt_boxes[:,3]*((xyz_range[3]-xyz_range[0]))
-    tgt_boxes[:,4] = tgt_boxes[:,4]*((xyz_range[4]-xyz_range[1]))
-    tgt_boxes[:,5] = tgt_boxes[:,5]*((xyz_range[5]-xyz_range[2]))
-    tgt_boxes[:,6] = (tgt_boxes[:,6]*2 - 1)*np.pi
+    # tgt_boxes[:,0] = tgt_boxes[:,0]
+    # tgt_boxes[:,1] = tgt_boxes[:,1]
+    # tgt_boxes[:,2] = tgt_boxes[:,2]
+    # tgt_boxes[:,3] = tgt_boxes[:,3]
+    # tgt_boxes[:,4] = tgt_boxes[:,4]
+    # tgt_boxes[:,5] = tgt_boxes[:,5]
+    # tgt_boxes[:,6] = (tgt_boxes[:,6])*np.pi
     
     return boxes,tgt_boxes
 
@@ -281,7 +282,7 @@ def show_model_inference():
     return fig,fig2,fig3,fig4,fig5
 
 itr=0
-# itr = model_dict["itr"]
+itr = model_dict["itr"]
 # max_norm = args.clip_max_norm
 
 # model.train()
@@ -331,10 +332,10 @@ for e in tqdm(range(50)):
             
         if itr%500==0:
             model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler.state_dict(),"itr":itr}
-            torch.save(model_dict,"./weights/model_KITTI.pth")
+            torch.save(model_dict,"./weights/model_KITTI_exp.pth")
             # break
         itr+=1
     lr_scheduler.step()
     
 model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler.state_dict(),"itr":itr}
-torch.save(model_dict,"./weights/model_KITTI.pth")
+torch.save(model_dict,"./weights/model_KITTI_exp.pth")

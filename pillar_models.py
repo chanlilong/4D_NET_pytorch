@@ -8,63 +8,54 @@ from detector_models import Efficient_Det,resnet_backbone,BiFPN,SELayer,deform_r
 from torch.nn.functional import grid_sample
 
 class Pointnet_Resblock(torch.nn.Module):
-    def __init__(self,in_channels,out_channels,n_pnts_pillar,last=False):
+    def __init__(self,in_channels,out_channels):
         super().__init__()
-        self.l1 = torch.nn.Linear(in_channels,out_channels,bias=False)
-        self.l2 = torch.nn.Linear(out_channels,out_channels,bias=False)
-        self.lx = torch.nn.Linear(in_channels,out_channels,bias=False)
+
+        self.l1 = torch.nn.Conv2d(in_channels,out_channels,(1,1))
+        self.l2 = torch.nn.Conv2d(out_channels,out_channels,(1,1))
+        self.lx = torch.nn.Conv2d(in_channels,out_channels,(1,1))
 
         self.norm1 = torch.nn.BatchNorm2d((out_channels))
         self.norm2 = torch.nn.BatchNorm2d((out_channels))
-        self.relu1 = torch.nn.LeakyReLU(inplace=True)
-        self.relu2 = torch.nn.LeakyReLU(inplace=True)
-        
-        self.last = last
+        self.normx = torch.nn.BatchNorm2d((out_channels))
+        self.relu1 = torch.nn.ReLU(inplace=True)
+        self.relu2 = torch.nn.ReLU(inplace=True)
 
-        self.maxpool = nn.MaxPool2d((1,n_pnts_pillar))
-        
     def forward(self,pillars):
-        
-        x = self.l1(pillars)
-        #print(x.shape) # torch.Size([16, 20000, 16, 16]) -> torch.Size([16, 16, 20000, 16])
-        x = self.norm1(x.permute(0, 3,1,2).contiguous()).permute(0, 2,3,1).contiguous()
-        #print(x.shape) # torch.Size([16, 16, 16, 20000])
-        x = self.relu1(x)
-        x = self.l2(x)
-        x = self.lx(pillars)+x
-        x = self.norm2(x.permute(0, 3,1,2).contiguous()).permute(0, 2,3,1).contiguous()
-        x = self.relu2(x)
 
-        maxp = self.maxpool(x.permute(0,1,3,2))
+            x = self.l1(pillars)
+            x = self.norm1(x)
+            x = self.relu1(x)
+            x = self.l2(x)
+            x = self.norm2(x)
+            x = self.normx(self.lx(pillars))+x
+            x = self.relu2(x)
+            
+
+            return x
         
-        if self.last:
-            return maxp.squeeze(-1)
-        else:
-            return torch.cat([x,maxp.permute(0,1,3,2)],2) #Cat in n_points axis
 
 class Pillar_Network_SECOND(nn.Module):
 
     def __init__(self,input_features = 9, n_features=64,n_pnts_pillar=64):
         super().__init__()
         self.n_features= n_features
-        self.conv1 = Pointnet_Resblock(input_features,n_features//4,n_pnts_pillar)
-        self.conv2 = Pointnet_Resblock(n_features//4,n_features//2,n_pnts_pillar+1)
-        self.conv3 = Pointnet_Resblock(n_features//2,n_features,n_pnts_pillar+2,last=True)
-
-        #self.maxpool = nn.MaxPool2d((1,n_pnts_pillar))
+        self.conv1 = Pointnet_Resblock(input_features,n_features//4)
+        self.conv2 = Pointnet_Resblock(n_features//4,n_features//2)
+        self.conv3 = Pointnet_Resblock(n_features//2,n_features)
+        self.norm2 = torch.nn.BatchNorm2d((n_features))
+        self.maxpool = nn.MaxPool2d((1,n_pnts_pillar))
 
     def forward(self,x):
-        #xshape: [4, 16384, 128, 9]
 
-        #x = x.permute(0,3,1,2)#torch.Size([1, 4, 2060,64])
 
         x = self.conv1(x)#torch.Size([1, 64, 2060,64])
         x = self.conv2(x)
         x = self.conv3(x)
+        x = self.norm2(x)
+        x = self.maxpool(x)
 
-        #x = self.maxpool(x.permute(0,1,3,2)).squeeze(-1)#torch.Size([1, 64, 2060,1])
-
-        return x 
+        return x
     
 class Pseudo_IMG_Scatter(torch.nn.Module):
     def __init__(self,xsize,ysize):
@@ -158,6 +149,7 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
     
 from deformable_conv import DeformableConv2d
 
+
 class RGB_Net(torch.nn.Module):
 
     def __init__(self,xsize,ysize,deform=False):
@@ -169,11 +161,12 @@ class RGB_Net(torch.nn.Module):
             self.cnn = deform_resnet_backbone(dims=64)
         else:
             self.cnn = resnet_backbone(dims=64)
+            
         self.fpn = BiFPN(64,64)
         
     def forward(self,RGB,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb):
         rgb_out = self.cnn(RGB)
-        _,c3,_,c4,c5 = self.fpn(rgb_out)
+        _,_,c3,c4,c5 = self.fpn(rgb_out)
         batch,C,_,_ = c3.shape
         pseudo_rgb_imga = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
         pseudo_rgb_imgb = torch.zeros(batch, C ,self.xsize , self.ysize ).to(RGB.device).type(RGB.type())
@@ -253,8 +246,9 @@ class NET_4D_EffDet(torch.nn.Module):
         self.rgb_net = RGB_Net(self.voxel_x_grid_size,self.voxel_y_grid_size,deform=rgb_deform)
     
     def forward(self,img,pillar,coord,contains_pillars,pillar_img_pts,rgb_coors,contains_rgb):
-
+        pillar = pillar.permute(0,3,1,2)
         learned_pillars = self.pillar_net(pillar)
+        learned_pillars = learned_pillars.squeeze(-1).permute(0,2,1)
         pseudo_img_pillar,dynamic_img = self.pillar_to_img(learned_pillars,coord,contains_pillars)
         pseudo_rgb_img = self.rgb_net(img,dynamic_img,pillar_img_pts,rgb_coors,contains_rgb)
         pseudo_img = torch.cat([pseudo_img_pillar,pseudo_rgb_img],dim=1)
