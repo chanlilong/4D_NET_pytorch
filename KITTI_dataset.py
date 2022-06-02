@@ -228,8 +228,8 @@ class kitti_dataset(Dataset):
 
         label = pd.read_csv(label_file,header=None,sep=" ")
         label.columns = self.col_names
-        df = label[["type","z","x","y","w","l","h","yaw"]]
-        df.columns = ["type","x","y","z","w","l","h","yaw"]
+        df = label[["type","z","x","y","l","w","h","yaw"]] #Camera Coord
+        df.columns = ["type","x","y","z","l","w","h","yaw"] #LiDAR Coord
         df["y"] =  (-1*df["y"]).copy(deep=True)
         df = df[df["type"]!="DontCare"]
         xy_filter = (df["x"].values <= self.xyz_range[3]) & (df["x"].values >= self.xyz_range[0]) & (df["y"].values <= self.xyz_range[4]) & (df["y"].values >= self.xyz_range[1])
@@ -247,15 +247,13 @@ class kitti_dataset(Dataset):
         # boxes[...,4:5] =  boxes[...,4:5]/(self.xyz_range[4]-self.xyz_range[1]) #w
         # boxes[...,5:6] =  boxes[...,5:6]/(self.xyz_range[5]-self.xyz_range[2]) #h
         # boxes[...,6:]  =  (boxes[...,6:]/np.pi+1)/2 #normalize -pi to pi -> 0 to 1 #rot
-
-        # boxes[...,6:]  =  (boxes[...,6:]/np.pi)#normalize -pi to pi -> 0 to 1 #rot
         
         outputs = {}
         outputs["boxes"] = boxes
         outputs["labels"] = torch.tensor(classes_int,dtype=torch.int).long()
         outputs["idx"] = torch.as_tensor([idx])
         
-        img = cv2.resize(img,(W//2,H//2))/255.0
+        img = cv2.resize(img,(W//3,H//3))/255.0
         img = torch.as_tensor(img,dtype=torch.float32).permute(2,0,1)
         
         if self.return_calib:

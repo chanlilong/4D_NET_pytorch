@@ -1,19 +1,20 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"]="2,3"
+os.environ["CUDA_VISIBLE_DEVICES"]="1,2,3"
 import argparse
 import numpy as np
 import torch
+
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from KITTI_dataset import kitti_dataset,KITTI_collate_fn,KITTI_collate_fn_Wcalib
-# torch.multiprocessing.set_sharing_strategy('file_system')
+
 from pillar_models import NET_4D_EffDet
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from itertools import chain
 from matcher import Criterion
-writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI_exp')
+writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI_exp2')
 
 import matplotlib.pyplot as plt
 from  matplotlib.transforms import Affine2D 
@@ -22,9 +23,15 @@ import cv2
 
 import pandas as pd
 
-batch_size = 8
+# torch.multiprocessing.set_sharing_strategy('file_system')
+torch.backends.cudnn.benchmark = True
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
+
+batch_size = 14
 xyz_range = np.array([0,-40.32,-2,80.64,40.32,3])
-xy_voxel_size= np.array([0.16,0.16])
+xy_voxel_size= np.array([0.2,0.2])
 points_per_pillar = 100
 n_pillars=12000
 
@@ -34,14 +41,14 @@ data_loader_train = DataLoader(dataset, batch_size=batch_size,collate_fn= KITTI_
 dataloader_vis = DataLoader(dataset_vis, batch_size=1,collate_fn= KITTI_collate_fn_Wcalib, num_workers=1, shuffle=True)
 
 anchor_dict = np.load("./cluster_kitti_3scales_3anchor.npy",allow_pickle=True).item()
-model = NET_4D_EffDet(anchor_dict,n_classes=4)
+model = NET_4D_EffDet(anchor_dict,n_classes=4, xyz_range = xyz_range, n_pnt_pillar = points_per_pillar,xy_voxel_size= xy_voxel_size,rgb_deform=False)
 
 
-model_dict = torch.load("./weights/model_KITTI_exp.pth") 
-model.load_state_dict(model_dict["params"],strict=False)
+# model_dict = torch.load("./weights/model_KITTI_exp.pth") 
+# model.load_state_dict(model_dict["params"],strict=False)
 
 criterion = Criterion(4)
-model = torch.nn.DataParallel(model, device_ids=[0,1])
+model = torch.nn.DataParallel(model, device_ids=[0,1,2])
 model.cuda()
 n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print('number of params:', n_parameters)
@@ -49,13 +56,13 @@ print('number of params:', n_parameters)
 
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04)
-optimizer.load_state_dict(model_dict["optimizer"])
+# optimizer.load_state_dict(model_dict["optimizer"])
 # optimizer.cuda()
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 45)
-lr_scheduler.load_state_dict(model_dict["scheduler"])
+# lr_scheduler.load_state_dict(model_dict["scheduler"])
 # lr_scheduler = model_dict["scheduler"]
 # lr_scheduler.cuda()
-# scaler = torch.cuda.amp.GradScaler()
+# 
 # for output bounding box post-processing
 
 def roty(t):
@@ -200,9 +207,9 @@ def show_model_inference():
 
     pred_boxes,target_boxes = return_scaled_boxes(pred_boxes.cpu().numpy(),targets[0]["boxes"].numpy(),xyz_range)
 
-    target_boxes_df = pd.DataFrame(target_boxes,columns=["z","x","y","w","l","h","yaw"])
+    target_boxes_df = pd.DataFrame(target_boxes,columns=["z","x","y","l","w","h","yaw"])
     
-    pred_boxes_df = pd.DataFrame(pred_boxes,columns=["z","x","y","w","l","h","yaw"])
+    pred_boxes_df = pd.DataFrame(pred_boxes,columns=["z","x","y","l","w","h","yaw"])
     
 
     target_boxes_df["x"] *=-1
@@ -222,6 +229,8 @@ def show_model_inference():
                 
     img2 = img[0].permute(1,2,0).numpy().copy()
     img2 = cv2.resize(img2,(1242,375))
+    img2 *= 255.0
+    img2 = img2.astype(np.uint8)
     
     for b in tgt_boxes:  
         img2 = draw_projected_box3d(img2,b,color=(255,0,0))
@@ -230,7 +239,7 @@ def show_model_inference():
         img2 = draw_projected_box3d(img2,b,color=(0,255,0))
         
     fig,ax = plt.subplots(1,1,figsize=(15,10))
-    ax.imshow(img2)
+    ax.imshow(img2.astype(np.uint8))
     
     pillars2 = pillars[0,contains_pillars.type(torch.bool).flatten()]
     x = (pillars2[...,0]*(xyz_range[3]-xyz_range[0]))+xyz_range[0]
@@ -249,12 +258,12 @@ def show_model_inference():
     pred_boxes_df["x"] *=-1
     
     for b in target_boxes_df.values:
-        x,y,z,w,l,h,r = b
+        x,y,z,l,w,h,r = b
         # y *= -1
         draw_rectangle(ax2, (x,y), r, w, l,color=(1,0,0))
         
     for b in pred_boxes_df.values:
-        x,y,z,w,l,h,r = b
+        x,y,z,l,w,h,r = b
         # y *= -1
         draw_rectangle(ax2, (x,y), r, w, l,color=(0,1,0))
         
@@ -282,26 +291,29 @@ def show_model_inference():
     return fig,fig2,fig3,fig4,fig5
 
 itr=0
-itr = model_dict["itr"]
+# itr = model_dict["itr"]
 # max_norm = args.clip_max_norm
 
 # model.train()
 # model.cuda()
+# scaler = torch.cuda.amp.GradScaler()
 for e in tqdm(range(50)):
 
     for i,(img,(pillars, coord, contains_pillars),(pillar_img_pts,rgb_coors,contains_rgb),targets) in enumerate(data_loader_train):
         
+        for param in model.parameters():
+            param.grad = None
+            
+        targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
         # with torch.cuda.amp.autocast():
         pred,_,_= model(img.cuda(),pillars.float().cuda(), coord.cuda(), contains_pillars.cuda(),pillar_img_pts.float().cuda(),rgb_coors.cuda(),contains_rgb.cuda())
 
-        targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
         loss_dict = criterion(pred, targets)
         weight_dict = criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
-        
+
         max_probs = pred['pred_logits'][:,:, 0:].sigmoid().max()
-            
-            
+
         
         losses.backward()
         optimizer.step()
@@ -327,10 +339,10 @@ for e in tqdm(range(50)):
             writer.add_figure("images/RGB_Pseudoimg",fig4,itr)
             writer.add_figure("images/dynamic_img",fig5,itr)
 
-        if itr%50==0 and itr!=0:
+        if itr%250==0 and itr!=0:
             torch.cuda.empty_cache()     
             
-        if itr%500==0:
+        if itr%250==0 and itr!=0:
             model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler.state_dict(),"itr":itr}
             torch.save(model_dict,"./weights/model_KITTI_exp.pth")
             # break

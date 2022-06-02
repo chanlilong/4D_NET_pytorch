@@ -134,8 +134,8 @@ class HungarianMatcher(nn.Module):
             # b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7]*2-1)*np.pi],-1) 
             
             try:
-                b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7])],-1) #x,y,z,w,l,h,r
-                b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7])],-1) 
+                b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7])],-1) #x,y,z,l,w,h,rz
+                b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7])],-1)  #"x","y","z","l","w","h","yaw"
                 cost_giou = -bbox_overlaps_3d(b1,b2, coordinate='lidar')
                 # cost_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="smallest")
 
@@ -144,15 +144,15 @@ class HungarianMatcher(nn.Module):
                 C = C.view(bs, num_queries, -1).cpu()
 
                 sizes = [len(v["boxes"]) for v in targets]
-                max_val = torch.maximum(cost_bbox,cost_class).max()
-                indices = [linear_sum_assignment(torch.nan_to_num(c[i],max_val,max_val,max_val)) for i, c in enumerate(C.split(sizes, -1))]
+                # max_val = torch.maximum(cost_bbox,cost_class).max()
+                # indices = [linear_sum_assignment(torch.nan_to_num(c[i],max_val,max_val,max_val)) for i, c in enumerate(C.split(sizes, -1))]
+                indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))]
                 return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
             except:
                 print("hungarian giou match failed")
                 # b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7])],-1) #x,y,z,w,l,h,r
                 # b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7])],-1) 
                 # cost_giou = -bbox_overlaps_3d(b1,b2, coordinate='lidar')
-                # cost_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="smallest")
 
                 # + self.cost_giou * cost_giou
                 C = self.cost_bbox * cost_bbox + self.cost_class * cost_class
@@ -307,17 +307,22 @@ class Criterion(nn.Module):
         #3DIOU Loss
         # b1 = torch.cat([src_boxes[...,0:3],src_boxes[...,4:6],src_boxes[...,3:4],(src_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
         # b2 = torch.cat([target_boxes[...,0:3],target_boxes[...,4:6],target_boxes[...,3:4],(target_boxes[...,-1:]*2-1)*np.pi],-1) #x,y,z,w,h,l,r
-        b1 = torch.cat([src_boxes[...,0:3],src_boxes[...,4:6],src_boxes[...,3:4],(src_boxes[...,-1:])],-1) #x,y,z,w,h,l,r
-        b2 = torch.cat([target_boxes[...,0:3],target_boxes[...,4:6],target_boxes[...,3:4],(target_boxes[...,-1:])],-1) #x,y,z,w,h,l,r
+        #x0,y1,z2,l3,w4,h5,r6 
+        b1 = torch.cat([src_boxes[...,0:3],src_boxes[...,4:6],src_boxes[...,3:4],src_boxes[...,-1:]],-1) #x,y,z,w,h,l,r
+        b2 = torch.cat([target_boxes[...,0:3],target_boxes[...,4:6],target_boxes[...,3:4],target_boxes[...,-1:]],-1) #x,y,z,w,h,l,r
         loss_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="smallest") #for 3D GIOU (x,y,z,w,h,l,alpha) shape: B,N,7
+        
+#         b1 = torch.cat([src_boxes[...,0:6],(src_boxes[...,6:7])],-1) #x,y,z,l,w,h,rz
+#         b2 = torch.cat([target_boxes[...,0:6],(target_boxes[...,6:7])],-1) 
+#         loss_giou = 1-torch.diag(bbox_overlaps_3d(b1,b2, coordinate='lidar'))
+        
+        #2DIOU Loss
         # xyxy1 = box_cxcywh_to_xyxy(torch.cat([src_boxes[...,0:2],src_boxes[...,3:5]],-1).view(-1,4))
         # xyxy2 = box_cxcywh_to_xyxy(torch.cat([target_boxes[...,0:2],target_boxes[...,3:5]],-1).view(-1,4))
         # xyxyr1 = torch.cat([xyxy1,(src_boxes[...,6:]*2-1)*np.pi],-1).view(-1,5)
         # xyxyr2 = torch.cat([xyxy2,(target_boxes[...,6:]*2-1)*np.pi],-1).view(-1,5)
         # loss_bev = 1-torch.diag(boxes_iou_bev(xyxyr1,xyxyr2))
-        # b1 = torch.cat([src_boxes[...,0:6],(src_boxes[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
-        # b2 = torch.cat([target_boxes[...,0:6],(target_boxes[...,6:7]*2-1)*np.pi],-1) 
-        # loss_giou = 1-torch.diag(bbox_overlaps_3d(b1,b2, coordinate='lidar'))
+        
         
         losses['loss_giou'] = ((loss_giou.sum() / num_boxes) )
         

@@ -7,7 +7,42 @@ from torchvision.ops import nms
 from torch.nn import functional as F
 import numpy as np
 from deformable_conv import DeformableConv2d
+from typing import Tuple, Optional ,List  
+import math
 
+def inverse_sigmoid(x, eps=1e-5):
+    x = x.clamp(min=0, max=1)
+    x1 = x.clamp(min=eps)
+    x2 = (1 - x).clamp(min=eps)
+    return torch.log(x1)-torch.log(x2)   
+
+def get_same_padding(x: int, k: int, s: int, d: int):
+    return max((math.ceil(x / s) - 1) * s + (k - 1) * d + 1 - x, 0)
+def pad_same(x, k: List[int], s: List[int], d: List[int] = (1, 1), value: float = 0):
+    ih, iw = x.size()[-2:]
+    pad_h, pad_w = get_same_padding(ih, k[0], s[0], d[0]), get_same_padding(iw, k[1], s[1], d[1])
+    if pad_h > 0 or pad_w > 0:
+        x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2], value=value)
+    return x
+
+def conv2d_same(
+        x, weight: torch.Tensor, bias: Optional[torch.Tensor] = None, stride: Tuple[int, int] = (1, 1),
+        padding: Tuple[int, int] = (0, 0), dilation: Tuple[int, int] = (1, 1), groups: int = 1):
+    x = pad_same(x, weight.shape[-2:], stride, dilation)
+    return F.conv2d(x, weight, bias, stride, (0, 0), dilation, groups)
+
+
+class Conv2dSame(nn.Conv2d):
+    """ Tensorflow like 'SAME' convolution wrapper for 2D convolutions
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True):
+        super(Conv2dSame, self).__init__(
+            in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+
+    def forward(self, x):
+        return conv2d_same(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 class resnet_backbone(torch.nn.Module):
     def __init__(self,single_scale=False,dims=256):
         super().__init__()
@@ -63,15 +98,41 @@ class deform_resnet_backbone(torch.nn.Module):
         l2 = feats[2]
         l3 = feats[3] 
         l4 = feats[4]
-        return self.conv0(l1),self.conv1(l1),self.conv2(l2),self.conv3(l3),self.conv4(l4) 
-        # return self.conv0(l1),self.conv1(F.interpolate(l1,scale_factor=0.75)),self.conv2(l2),self.conv3(l3),self.conv4(l4)   
-        
-
+        # return self.conv0(l1),self.conv1(l1),self.conv2(l2),self.conv3(l3),self.conv4(l4) 
+        return self.conv0(l1),self.conv1(F.interpolate(l1,scale_factor=0.75)),self.conv2(l2),self.conv3(l3),self.conv4(l4)   
         
 class efficientnetv2_s_backbone(torch.nn.Module):
-    def __init__(self,single_scale=False,dims=256):
+    def __init__(self,dims=256):
         super().__init__()
-        self.model = timm.create_model('tf_efficientnetv2_s_in21ft1k', pretrained=True)
+        self.model = timm.create_model('tf_efficientnetv2_s_in21ft1k', pretrained=True, features_only=True)
+
+        self.conv4 = torch.nn.Conv2d(256,dims,1,1)
+        self.conv3 = torch.nn.Conv2d(160,dims,1,1)
+        self.conv2 = torch.nn.Conv2d(64,dims,1,1)
+        self.conv1 = torch.nn.Conv2d(48,dims,1,1)
+        self.conv0 = torch.nn.Conv2d(24,dims,1,1)
+        
+        
+    def forward(self,x):
+        feats = self.model(x)
+
+        # torch.Size([1, 24, 256, 256])
+        # torch.Size([1, 48, 128, 128])
+        # torch.Size([1, 64, 64, 64])
+        # torch.Size([1, 160, 32, 32])
+        # torch.Size([1, 256, 16, 16])
+        l1 = feats[0] 
+        l2 = feats[1]
+        l3 = feats[2] 
+        l4 = feats[3]
+        l5 = feats[4]
+        return self.conv0(l1),self.conv1(l2),self.conv2(l3),self.conv3(l4),self.conv4(l5) 
+
+        
+class efficientnetv2_s_backbone_old(torch.nn.Module):
+    def __init__(self,dims=256):
+        super().__init__()
+        self.model = timm.create_model('tf_efficientnetv2_s_in21ft1k', pretrained=True, features_only=True)
         
         self.activation = {}
 #         self.layer_names = [f"layer{i+1}" for i in range(4)]
@@ -120,32 +181,32 @@ class efficientnetv2_s_backbone(torch.nn.Module):
 
 # from torch_dwconv import depthwise_conv2d, DepthwiseConv2d
 
-class DepthwiseConvBlock(nn.Module):
-    """
-    Depthwise seperable convolution. 
+# class DepthwiseConvBlock(nn.Module):
+#     """
+#     Depthwise seperable convolution. 
     
     
-    """
-    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1, freeze_bn=False):
-        super(DepthwiseConvBlock,self).__init__()
-        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride, 
-                               padding, dilation, groups=in_channels, bias=False)
+#     """
+#     def __init__(self, in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1, freeze_bn=False):
+#         super(DepthwiseConvBlock,self).__init__()
+# #         self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride, 
+# #                                padding, dilation, groups=in_channels, bias=False)
         
-        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, 
-                                   stride=1, padding=0, dilation=1, groups=1, bias=False)
+# #         self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, 
+# #                                    stride=1, padding=0, dilation=1, groups=1, bias=False)
         
-        # self.dw_conv = DepthwiseConv2d(in_channels, out_channels,kernel_size,stride,padding,dilation)
+#         self.dw_conv = DepthwiseConv2d(in_channels, out_channels,kernel_size,stride,padding,dilation)
         
-        self.bn = nn.BatchNorm2d(out_channels, momentum=0.9997, eps=4e-5)
-        self.act = nn.ReLU(inplace=True)
+#         self.bn = nn.BatchNorm2d(out_channels, momentum=0.9997, eps=4e-5)
+#         self.act = nn.ReLU(inplace=True)
         
-    def forward(self, inputs):
-        x = self.depthwise(inputs)
-        x = self.pointwise(x)
+#     def forward(self, inputs):
+#         # x = self.depthwise(inputs)
+#         # x = self.pointwise(x)
         
-        # x = self.dw_conv(inputs)
-        x = self.bn(x)
-        return self.act(x)
+#         x = self.dw_conv(inputs)
+#         x = self.bn(x)
+#         return self.act(x)
     
 # class DepthwiseConvBlock(nn.Module):
 #     """
@@ -185,15 +246,15 @@ class BiFPN(nn.Module):
         # self.conv5dw = DepthwiseConvBlock(in_channels,out_channels)
         # self.conv6dw = DepthwiseConvBlock(in_channels,out_channels)
         # self.conv7dw = DepthwiseConvBlock(in_channels,out_channels)
-        self.conv7up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv6up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv5up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv4up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv3up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv4dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv5dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv6dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
-        self.conv7dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1)),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv7up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv6up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv5up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv4up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv3up = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv4dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv5dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv6dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
+        self.conv7dw = nn.Sequential(nn.Conv2d(in_channels,out_channels,(1,1),bias=False),nn.BatchNorm2d(out_channels),nn.ReLU(inplace=True))
         
         
     def forward(self, inputs):
@@ -217,23 +278,6 @@ class BiFPN(nn.Module):
         
         return P3_out, P4_out, P5_out,P6_out, P7_out
 
-class ScalePrediction(nn.Module):
-    def __init__(self, in_channels, num_classes,n_anchors):
-        super().__init__()
-        self.pred = nn.Sequential(
-                                    nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1,bias=False),
-                                    nn.BatchNorm2d(in_channels),
-                                    nn.LeakyReLU(0.1),
-                                    nn.Conv2d(in_channels, (num_classes + 4) * n_anchors, kernel_size=1), #Batch,n_anchors,w,h,(prob,x,y,w,h,c1,c2,c3.....cn)
-                                    )
-        self.n_anchors = n_anchors
-        self.num_classes = num_classes
-
-    def forward(self, x):
-        # return (self.pred(x).reshape(x.shape[0], self.n_anchors, self.num_classes + 4, x.shape[2], x.shape[3]).permute(0, 1, 3, 4, 2))   
-        return self.pred(x)
-
-    
 class SELayer(nn.Module):
     def __init__(self, channel, reduction=16):
         super(SELayer, self).__init__()
@@ -252,12 +296,6 @@ class SELayer(nn.Module):
         return x * y.expand_as(x)
 
     
-    
-def inverse_sigmoid(x, eps=1e-5):
-    x = x.clamp(min=0, max=1)
-    x1 = x.clamp(min=eps)
-    x2 = (1 - x).clamp(min=eps)
-    return torch.log(x1)-torch.log(x2)    
 
 class Efficient_Det(nn.Module):
 
@@ -269,13 +307,15 @@ class Efficient_Det(nn.Module):
 
         self.setup_anchors(anchor_dictionary,xyz_range)
         self.cnn_backbone = resnet_backbone(dims=n_pnts_features)
-        self.fpn = nn.Sequential(BiFPN(n_pnts_features,n_pnts_features),BiFPN(n_pnts_features,n_pnts_features),BiFPN(n_pnts_features,n_pnts_features))
-        self.bb1 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features,(1,1)),nn.BatchNorm2d(n_pnts_features),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features,7*self.n_anchors,(1,1)))
-        self.bb2 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features,(1,1)),nn.BatchNorm2d(n_pnts_features),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features,7*self.n_anchors,(1,1)))
-        self.bb3 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features,(1,1)),nn.BatchNorm2d(n_pnts_features),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features,7*self.n_anchors,(1,1)))
-        self.clss1 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features,(1,1)),nn.BatchNorm2d(n_pnts_features),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features,n_classes*self.n_anchors,(1,1)))
-        self.clss2 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features,(1,1)),nn.BatchNorm2d(n_pnts_features),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features,n_classes*self.n_anchors,(1,1)))
-        self.clss3 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features,(1,1)),nn.BatchNorm2d(n_pnts_features),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features,n_classes*self.n_anchors,(1,1)))
+        # self.cnn_backbone = efficientnetv2_s_backbone(dims=n_pnts_features)
+        # self.fpn = nn.Sequential(BiFPN(n_pnts_features,n_pnts_features),BiFPN(n_pnts_features,n_pnts_features),BiFPN(n_pnts_features,n_pnts_features))
+        self.fpn = BiFPN(n_pnts_features,n_pnts_features)
+        self.bb1 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features//2,(1,1),bias=False),nn.BatchNorm2d(n_pnts_features//2),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features//2,7*self.n_anchors,(1,1)))
+        self.bb2 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features//2,(1,1),bias=False),nn.BatchNorm2d(n_pnts_features//2),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features//2,7*self.n_anchors,(1,1)))
+        self.bb3 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features//2,(1,1),bias=False),nn.BatchNorm2d(n_pnts_features//2),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features//2,7*self.n_anchors,(1,1)))
+        self.clss1 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features//2,(1,1),bias=False),nn.BatchNorm2d(n_pnts_features//2),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features//2,n_classes*self.n_anchors,(1,1)))
+        self.clss2 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features//2,(1,1),bias=False),nn.BatchNorm2d(n_pnts_features//2),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features//2,n_classes*self.n_anchors,(1,1)))
+        self.clss3 = nn.Sequential(nn.Conv2d(n_pnts_features,n_pnts_features//2,(1,1),bias=False),nn.BatchNorm2d(n_pnts_features//2),nn.ReLU(inplace=True),nn.Conv2d(n_pnts_features//2,n_classes*self.n_anchors,(1,1)))
 
         self.n_classes=n_classes
         self.n_pnts_features = n_pnts_features
@@ -292,6 +332,15 @@ class Efficient_Det(nn.Module):
         self.cnn_backbone.model.conv1.weight = torch.nn.Parameter(weight[:,:self.n_pnts_features,:,:])
         self.cnn_backbone.model.conv1.requires_grad = True
 
+#     def set_cnn_weights(self):
+#         '''for effnetv2'''
+#         weight = self.cnn_backbone.model.conv_stem.weight.clone() # 24,3,7,7
+#         weight = weight.repeat(1,44,1,1)
+
+#         self.cnn_backbone.model.conv_stem = Conv2dSame(self.n_pnts_features,64*2,kernel_size=(3,3),stride=(2,2),padding="same",bias=False)
+#         self.cnn_backbone.model.conv_stem.weight = torch.nn.Parameter(weight[:,:self.n_pnts_features,:,:])
+#         self.cnn_backbone.model.conv_stem.requires_grad = True
+
 
     def setup_anchors(self,anchor_dictionary,xyz_range):
         
@@ -300,8 +349,8 @@ class Efficient_Det(nn.Module):
         # range_h = (xyz_range[5]-xyz_range[2]) #h
         # self.anchors = anchor_dictionary["anchor_boxes"]/np.array([[range_l,range_w,range_h]])
         self.anchors = anchor_dictionary["anchor_boxes"]
-        print(self.anchors.shape)
-        print(self.anchors)
+        # print(self.anchors.shape)
+        # print(self.anchors)
         self.anchors.sort(0)
         self.anchors = self.anchors[::-1]
         self.n_anchors = anchor_dictionary["N_anchors"]
@@ -310,7 +359,7 @@ class Efficient_Det(nn.Module):
         self.anchors = torch.as_tensor(self.anchors[::-1].copy(),dtype=torch.float32)
         self.anchors = self.anchors.view(self.n_scales,self.n_anchors,3)
         # self.anchors = torch.nn.Parameter(self.anchors, requires_grad=False)
-        print(self.anchors)
+        # print(self.anchors)
     def forward(self,x):
         
         fpn_features = self.cnn_backbone(x)
@@ -340,30 +389,32 @@ class Efficient_Det(nn.Module):
         classes = []
         for bbox,clss,anchor_i in zip([bbox1,bbox2,bbox3],[clss1,clss2,clss3],self.anchors):
             # print(bbox.shape)
-            anchor_i = anchor_i.to(bbox.device)
+            anchor_i = anchor_i.view(1,1,self.n_anchors,3).to(bbox.device)
+            # anchor_i = anchor_i
             n_batch,C,h,w = bbox.shape
             bbox = bbox.permute(0,2,3,1).contiguous()
             clss = clss.permute(0,2,3,1).contiguous()
             bbox = bbox.view(n_batch,h*w,self.n_anchors,7)
             clss = clss.view(n_batch,h*w*self.n_anchors,self.n_classes)
 
-            Y,X = torch.meshgrid(torch.linspace(0,1,w+1).type(bbox.type()),torch.linspace(0,1,h+1).type(bbox.type()))
+            # Y,X = torch.meshgrid(torch.linspace(0,1,w+1).type(bbox.type()),torch.linspace(0,1,h+1).type(bbox.type()))
+            
             # a = (bbox[...,0:1] + inverse_sigmoid(X[:w,:w].flatten()).view(1,-1,1,1).to(bbox.device)).view(n_batch,-1,1).sigmoid() #dx + cx
             # b = (bbox[...,1:2] + inverse_sigmoid(Y[:h,:h].flatten()).view(1,-1,1,1).to(bbox.device)).view(n_batch,-1,1).sigmoid() #dy + cy 
             # c = bbox[...,2:3].view(n_batch,-1,1).sigmoid() #z
             # d = (bbox[...,3:6] + inverse_sigmoid(anchor_i).to(bbox.device)).sigmoid().view(n_batch,-1,3) # lwh
-            # e = bbox[...,-1:].view(n_batch,-1,1).sigmoid() #r
-            
-            da = torch.sqrt(anchor_i[...,0:1]**2+anchor_i[...,1:2]**2)#self.n_scales,self.n_anchors,3
+            # e = bbox[...,-1:].view(n_batch,-1,1).tanh()*np.pi #r
+            Y,X = torch.meshgrid(torch.linspace(-1,1,w+1).type(bbox.type()),torch.linspace(0,1,h+1).type(bbox.type()))
+            da = torch.sqrt(anchor_i[...,0:1]**2+anchor_i[...,1:2]**2)#b,1,self.n_anchors,3
             ha = anchor_i[...,2:3]
-            # print(da.shape,ha.shape) #3,1
             a = (bbox[...,0:1]*da + (X[:w,:w].flatten()*(self.xyz_range[3]-self.xyz_range[0])).view(1,-1,1,1).to(bbox.device)).view(n_batch,-1,1) #dx + cx
-            b = (bbox[...,1:2]*da + (Y[:h,:h].flatten()*(self.xyz_range[4]-self.xyz_range[1])).view(1,-1,1,1).to(bbox.device)).view(n_batch,-1,1) #dy + cy 
+            b = (bbox[...,1:2]*da + (Y[:h,:h].flatten()*((self.xyz_range[4]-self.xyz_range[1])/2)).view(1,-1,1,1).to(bbox.device)).view(n_batch,-1,1) #dy + cy 
             c = (bbox[...,2:3]*ha + ((self.xyz_range[5]-self.xyz_range[2])/2)).view(n_batch,-1,1) #z
             d = (torch.exp(bbox[...,3:6])*(anchor_i.to(bbox.device))).view(n_batch,-1,3) # lwh
             e = bbox[...,-1:].view(n_batch,-1,1).tanh()*np.pi #r
             # print(a.shape,b.shape,c.shape,d.shape,e.shape)
             # print(a,b)
+            
             bboxes.append(torch.cat([a,b,c,d,e],dim=2))
             classes.append(clss)
             
