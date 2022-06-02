@@ -18,7 +18,7 @@ from box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 import sys
 sys.path.append("/home/conda/RAID_5_14TB/Rotated_IoU/")
 sys.path.append("/home/conda/RAID_5_14TB/mmdetection3d/")
-# from mmdet3d.ops.iou3d import boxes_iou_bev
+from mmcv.ops.iou3d import boxes_iou_bev
 from mmdet3d.core.bbox.iou_calculators import bbox_overlaps_3d 
 from oriented_iou_loss import cal_diou,cal_diou_3d
 import numpy as np
@@ -124,11 +124,7 @@ class HungarianMatcher(nn.Module):
             #out_bbox -> x,y,z,l,w,h,r
             
             
-            # xyxy1 = box_cxcywh_to_xyxy(torch.cat([out_bbox[...,0:2],out_bbox[...,3:5]],-1).view(-1,4))
-            # xyxy2 = box_cxcywh_to_xyxy(torch.cat([tgt_bbox[...,0:2],tgt_bbox[...,3:5]],-1).view(-1,4))
-            # xyxyr1 = torch.cat([xyxy1,(out_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
-            # xyxyr2 = torch.cat([xyxy2,(tgt_bbox[...,6:]*2-1)*np.pi],-1).view(-1,5)
-            # cost_giou = -boxes_iou_bev(xyxyr1,xyxyr2)
+
             
             # b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
             # b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7]*2-1)*np.pi],-1) 
@@ -153,9 +149,13 @@ class HungarianMatcher(nn.Module):
                 # b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7])],-1) #x,y,z,w,l,h,r
                 # b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7])],-1) 
                 # cost_giou = -bbox_overlaps_3d(b1,b2, coordinate='lidar')
-
+                xyxy1 = box_cxcywh_to_xyxy(torch.cat([out_bbox[...,0:2],out_bbox[...,3:5]],-1).view(-1,4))
+                xyxy2 = box_cxcywh_to_xyxy(torch.cat([tgt_bbox[...,0:2],tgt_bbox[...,3:5]],-1).view(-1,4))
+                xyxyr1 = torch.cat([xyxy1,out_bbox[...,6:]],-1).view(-1,5)
+                xyxyr2 = torch.cat([xyxy2,tgt_bbox[...,6:]],-1).view(-1,5)
+                cost_giou = -boxes_iou_bev(xyxyr1,xyxyr2)
                 # + self.cost_giou * cost_giou
-                C = self.cost_bbox * cost_bbox + self.cost_class * cost_class
+                C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
                 C = C.view(bs, num_queries, -1).cpu()
 
                 sizes = [len(v["boxes"]) for v in targets]

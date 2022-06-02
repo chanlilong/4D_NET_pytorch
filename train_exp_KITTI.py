@@ -29,10 +29,10 @@ torch.autograd.set_detect_anomaly(False)
 torch.autograd.profiler.profile(False)
 torch.autograd.profiler.emit_nvtx(False)
 
-batch_size = 14
+batch_size = 20
 xyz_range = np.array([0,-40.32,-2,80.64,40.32,3])
-xy_voxel_size= np.array([0.2,0.2])
-points_per_pillar = 100
+xy_voxel_size= np.array([0.16,0.16])
+points_per_pillar = 32
 n_pillars=12000
 
 dataset = kitti_dataset(xyz_range = xyz_range,xy_voxel_size= xy_voxel_size,points_per_pillar = points_per_pillar,n_pillars=n_pillars)
@@ -44,8 +44,8 @@ anchor_dict = np.load("./cluster_kitti_3scales_3anchor.npy",allow_pickle=True).i
 model = NET_4D_EffDet(anchor_dict,n_classes=4, xyz_range = xyz_range, n_pnt_pillar = points_per_pillar,xy_voxel_size= xy_voxel_size,rgb_deform=False)
 
 
-# model_dict = torch.load("./weights/model_KITTI_exp.pth") 
-# model.load_state_dict(model_dict["params"],strict=False)
+model_dict = torch.load("./weights/model_KITTI_exp.pth") 
+model.load_state_dict(model_dict["params"],strict=False)
 
 criterion = Criterion(4)
 model = torch.nn.DataParallel(model, device_ids=[0,1,2])
@@ -56,10 +56,10 @@ print('number of params:', n_parameters)
 
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04)
-# optimizer.load_state_dict(model_dict["optimizer"])
+optimizer.load_state_dict(model_dict["optimizer"])
 # optimizer.cuda()
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 45)
-# lr_scheduler.load_state_dict(model_dict["scheduler"])
+lr_scheduler.load_state_dict(model_dict["scheduler"])
 # lr_scheduler = model_dict["scheduler"]
 # lr_scheduler.cuda()
 # 
@@ -291,7 +291,7 @@ def show_model_inference():
     return fig,fig2,fig3,fig4,fig5
 
 itr=0
-# itr = model_dict["itr"]
+itr = model_dict["itr"]
 # max_norm = args.clip_max_norm
 
 # model.train()

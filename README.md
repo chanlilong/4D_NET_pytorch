@@ -23,7 +23,7 @@
 - Look at Stats.ipynb
 
 ## How to Train
-- Edit the dataset root location in train_KITTI.py:
+- Edit the dataset root location in train_exp_KITTI.py:
 ```python
     from KITTI_dataset import kitti_dataset,KITTI_collate_fn
     from pillar_models import NET_4D_EffDet
@@ -31,7 +31,7 @@
     batch_size = 4
     xyz_range = np.array([0,-40.32,-2,80.64,40.32,3])
     xy_voxel_size= np.array([0.16,0.16])
-    points_per_pillar = 100
+    points_per_pillar = 32
     n_pillars=12000
 
     dataset = kitti_dataset(root = "/home/conda/RAID_5_14TB/DATASETS/KITTI_dataset/training/" , xyz_range = xyz_range,xy_voxel_size= xy_voxel_size,points_per_pillar = points_per_pillar,n_pillars=n_pillars)

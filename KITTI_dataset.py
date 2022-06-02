@@ -172,7 +172,7 @@ class kitti_dataset(Dataset):
         pointcloud = pointcloud[pc_filter]
         
         #1.Voxelize pc to pillars
-        voxels, coors, num_points_per_voxel = points_to_voxel(pointcloud,voxel_size=[*self.xy_voxel_size,1],coors_range=[*self.xyz_range],max_points=self.points_per_pillar,max_voxels=self.n_pillars)
+        voxels, coors, num_points_per_voxel = points_to_voxel(pointcloud,voxel_size=[*self.xy_voxel_size,4],coors_range=[*self.xyz_range],max_points=self.points_per_pillar,max_voxels=self.n_pillars)
         
         #2.Init pillar coordinates and pillar boolean indicator (contains_pillar)
         coord = np.zeros((self.n_pillars,3))
@@ -253,7 +253,7 @@ class kitti_dataset(Dataset):
         outputs["labels"] = torch.tensor(classes_int,dtype=torch.int).long()
         outputs["idx"] = torch.as_tensor([idx])
         
-        img = cv2.resize(img,(W//3,H//3))/255.0
+        img = cv2.resize(img,(W//2,H//2))/255.0
         img = torch.as_tensor(img,dtype=torch.float32).permute(2,0,1)
         
         if self.return_calib:
