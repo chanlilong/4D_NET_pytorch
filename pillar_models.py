@@ -157,8 +157,8 @@ class RGB_Net(torch.nn.Module):
         self.xsize = xsize+1
         self.ysize = ysize+1
         self.cnn = resnet_backbone(dims=64)
-        # if deform:
-        #     self.cnn = deform_resnet_backbone(dims=64)
+        if deform:
+            self.cnn = deform_resnet_backbone(dims=64)
         # else:
         #     self.cnn = resnet_backbone(dims=64)
             

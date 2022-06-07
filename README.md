@@ -8,6 +8,10 @@
 ## Visual Results
 ![visual_result](./images/4dnet_visual.png)
 
+## Evaluation mAP
+- Evaluation Code from https://github.com/jacoblambert/3d_lidar_detection_evaluation
+![results](./images/4dnet_results.png)
+
 ## Model Details 
 ![4dnet](./images/4dnet2.png)
 - The Model consist of a PointNet Processing model, an RGB Processing Model, PseudoImage Scattering Layer and a Efficient-Det style Single Shot Detector as object detection head
@@ -22,7 +26,8 @@
 - K-Means analysis of ground truth boxes are used
 - Look at Stats.ipynb
 
-## How to Train
+
+## How to Train/Infer
 - Edit the dataset root location in train_exp_KITTI.py:
 ```python
     from KITTI_dataset import kitti_dataset,KITTI_collate_fn

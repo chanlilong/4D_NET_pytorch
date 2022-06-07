@@ -43,6 +43,7 @@ class Conv2dSame(nn.Conv2d):
 
     def forward(self, x):
         return conv2d_same(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+    
 class resnet_backbone(torch.nn.Module):
     def __init__(self,single_scale=False,dims=256):
         super().__init__()
@@ -51,8 +52,8 @@ class resnet_backbone(torch.nn.Module):
         self.conv4 = torch.nn.Conv2d(2048,dims,1,1)
         self.conv3 = torch.nn.Conv2d(1024,dims,1,1)
         self.conv2 = torch.nn.Conv2d(512,dims,1,1)
-        self.conv1 = torch.nn.Conv2d(256,dims,(3,3),1)
-        self.conv0 = torch.nn.Conv2d(256,dims,1,1)
+        self.conv11 = torch.nn.Conv2d(256,dims,1,1)
+        self.conv00 = torch.nn.Conv2d(64,dims,1,1)
         
     def forward(self,x):
         feats = self.model(x)
@@ -65,11 +66,12 @@ class resnet_backbone(torch.nn.Module):
         #     torch.Size([1, 2048, 4, 4])
         
         # must match: torch.Size([1, 256, 32, 32]) torch.Size([1, 512, 16, 16]) torch.Size([1, 1024, 8, 8]) torch.Size([1, 2048, 4, 4])
+        l0 = feats[0]
         l1 = feats[1] 
         l2 = feats[2]
         l3 = feats[3] 
         l4 = feats[4]
-        return self.conv0(l1),self.conv1(l1),self.conv2(l2),self.conv3(l3),self.conv4(l4) 
+        return self.conv00(l0),self.conv11(l1),self.conv2(l2),self.conv3(l3),self.conv4(l4) 
         # return self.conv0(l1),self.conv1(F.interpolate(l1,scale_factor=0.75)),self.conv2(l2),self.conv3(l3),self.conv4(l4)   
         
 class deform_resnet_backbone(torch.nn.Module):
@@ -77,11 +79,11 @@ class deform_resnet_backbone(torch.nn.Module):
         super().__init__()
         self.model = timm.create_model('resnet50', pretrained=True, features_only=True)
 
-        self.conv4 = DeformableConv2d(2048,dims,1,1)
-        self.conv3 = DeformableConv2d(1024,dims,1,1)
-        self.conv2 = DeformableConv2d(512,dims,1,1)
-        self.conv1 = DeformableConv2d(256,dims,1,1)
-        self.conv0 = DeformableConv2d(256,dims,1,1)
+        self.dconv4 = DeformableConv2d(2048,dims,1,1)
+        self.dconv3 = DeformableConv2d(1024,dims,1,1)
+        self.dconv2 = DeformableConv2d(512,dims,1,1)
+        self.dconv1 = DeformableConv2d(256,dims,1,1)
+        self.dconv0 = DeformableConv2d(64,dims,1,1)
         
     def forward(self,x):
         feats = self.model(x)
@@ -94,12 +96,12 @@ class deform_resnet_backbone(torch.nn.Module):
         #     torch.Size([1, 2048, 4, 4])
         
         # must match: torch.Size([1, 256, 32, 32]) torch.Size([1, 512, 16, 16]) torch.Size([1, 1024, 8, 8]) torch.Size([1, 2048, 4, 4])
+        l0 = feats[0]
         l1 = feats[1] 
         l2 = feats[2]
         l3 = feats[3] 
         l4 = feats[4]
-        # return self.conv0(l1),self.conv1(l1),self.conv2(l2),self.conv3(l3),self.conv4(l4) 
-        return self.conv0(l1),self.conv1(F.interpolate(l1,scale_factor=0.75)),self.conv2(l2),self.conv3(l3),self.conv4(l4)   
+        return self.dconv0(l0),self.dconv1(l1),self.dconv2(l2),self.dconv3(l3),self.dconv4(l4) 
         
 class efficientnetv2_s_backbone(torch.nn.Module):
     def __init__(self,dims=256):

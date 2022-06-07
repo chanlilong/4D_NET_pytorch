@@ -14,7 +14,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from itertools import chain
 from matcher import Criterion
-writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI_exp2')
+writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI')
 
 import matplotlib.pyplot as plt
 from  matplotlib.transforms import Affine2D 
@@ -44,7 +44,7 @@ anchor_dict = np.load("./cluster_kitti_3scales_3anchor.npy",allow_pickle=True).i
 model = NET_4D_EffDet(anchor_dict,n_classes=4, xyz_range = xyz_range, n_pnt_pillar = points_per_pillar,xy_voxel_size= xy_voxel_size,rgb_deform=False)
 
 
-model_dict = torch.load("./weights/model_KITTI_exp.pth") 
+model_dict = torch.load("./weights/model_KITTI_exp_CP2.pth") 
 model.load_state_dict(model_dict["params"],strict=False)
 
 criterion = Criterion(4)
@@ -58,7 +58,7 @@ print('number of params:', n_parameters)
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04)
 optimizer.load_state_dict(model_dict["optimizer"])
 # optimizer.cuda()
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 45)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
 lr_scheduler.load_state_dict(model_dict["scheduler"])
 # lr_scheduler = model_dict["scheduler"]
 # lr_scheduler.cuda()
@@ -297,7 +297,7 @@ itr = model_dict["itr"]
 # model.train()
 # model.cuda()
 # scaler = torch.cuda.amp.GradScaler()
-for e in tqdm(range(50)):
+for e in tqdm(range(25)):
 
     for i,(img,(pillars, coord, contains_pillars),(pillar_img_pts,rgb_coors,contains_rgb),targets) in enumerate(data_loader_train):
         
@@ -342,12 +342,16 @@ for e in tqdm(range(50)):
         if itr%250==0 and itr!=0:
             torch.cuda.empty_cache()     
             
+        # xyz_range = np.array([0,-40.32,-2,80.64,40.32,3])
+        # xy_voxel_size= np.array([0.16,0.16])
+        # points_per_pillar = 32
+        # n_pillars=12000
         if itr%250==0 and itr!=0:
-            model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler.state_dict(),"itr":itr}
+            model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler.state_dict(),"itr":itr,"xyz_range":xyz_range,"xy_voxel_size":xy_voxel_size,"pnts_per_pillar":points_per_pillar,"n_pillars":n_pillars}
             torch.save(model_dict,"./weights/model_KITTI_exp.pth")
             # break
         itr+=1
-    lr_scheduler.step()
+    # lr_scheduler.step()
     
-model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler.state_dict(),"itr":itr}
+model_dict = {"params":model.module.state_dict(),"optimizer":optimizer.state_dict(),"scheduler":lr_scheduler.state_dict(),"itr":itr,"xyz_range":xyz_range,"xy_voxel_size":xy_voxel_size,"pnts_per_pillar":points_per_pillar,"n_pillars":n_pillars}
 torch.save(model_dict,"./weights/model_KITTI_exp.pth")

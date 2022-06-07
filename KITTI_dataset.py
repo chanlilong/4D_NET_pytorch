@@ -170,7 +170,7 @@ class kitti_dataset(Dataset):
         & (pointcloud[:,1] > self.xyz_range[1]) & (pointcloud[:,1] < self.xyz_range[4]) \
         & (pointcloud[:,2] > self.xyz_range[2]) & (pointcloud[:,2] < self.xyz_range[5])
         pointcloud = pointcloud[pc_filter]
-        
+        np.random.shuffle(pointcloud)
         #1.Voxelize pc to pillars
         voxels, coors, num_points_per_voxel = points_to_voxel(pointcloud,voxel_size=[*self.xy_voxel_size,4],coors_range=[*self.xyz_range],max_points=self.points_per_pillar,max_voxels=self.n_pillars)
         
