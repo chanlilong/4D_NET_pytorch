@@ -1,4 +1,6 @@
 # 4D Net Pytorch Implementation KITTI (RGB+LiDAR)
+- Weights available at :https://lchan017.asuscomm.com/s/4ytTaXQNmCLDzRA 
+    - password:4dnetpytorch
 - This repo is an attempt at implementing 4D Net https://arxiv.org/abs/2109.01066
 - NO TEMPORAL ELEMENT (RGB+LiDAR only, no Time)
     - This repo serves only as a tutorial for myself
