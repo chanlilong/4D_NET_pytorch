@@ -5,19 +5,21 @@ import numpy as np
 
 
 @numba.jit(nopython=True)
-def _points_to_voxel_reverse_kernel(points,
-                                    voxel_size,
-                                    coors_range,
-                                    num_points_per_voxel,
-                                    coor_to_voxelidx,
-                                    voxels,
-                                    coors,
-                                    max_points=35,
-                                    max_voxels=20000):
+def _points_to_voxel_reverse_kernel(
+    points: np.ndarray,
+    voxel_size: np.ndarray,
+    coors_range: np.ndarray,
+    num_points_per_voxel: np.ndarray,
+    coor_to_voxelidx: np.ndarray,
+    voxels: np.ndarray,
+    coors: np.ndarray,
+    max_points: int = 35,
+    max_voxels: int = 20000,
+) -> int:
     # put all computations to one loop.
     # we shouldn't create large array in main jit code, otherwise
     # reduce performance
-    N = points.shape[0]
+    n = points.shape[0]
     # ndim = points.shape[1] - 1
     ndim = 3
     ndim_minus_1 = ndim - 1
@@ -25,10 +27,10 @@ def _points_to_voxel_reverse_kernel(points,
     # np.round(grid_size)
     # grid_size = np.round(grid_size).astype(np.int64)(np.int32)
     grid_size = np.round(grid_size, 0, grid_size).astype(np.int32)
-    coor = np.zeros(shape=(3, ), dtype=np.int32)
+    coor = np.zeros(shape=(3,), dtype=np.int32)
     voxel_num = 0
     failed = False
-    for i in range(N):
+    for i in range(n):
         failed = False
         for j in range(ndim):
             c = np.floor((points[i, j] - coors_range[j]) / voxel_size[j])
@@ -54,33 +56,31 @@ def _points_to_voxel_reverse_kernel(points,
 
 
 @numba.jit(nopython=True)
-def _points_to_voxel_kernel(points,
-                            voxel_size,
-                            coors_range,
-                            num_points_per_voxel,
-                            coor_to_voxelidx,
-                            voxels,
-                            coors,
-                            max_points=35,
-                            max_voxels=20000):
+def _points_to_voxel_kernel(
+    points: np.ndarray,
+    voxel_size: np.ndarray,
+    coors_range: np.ndarray,
+    num_points_per_voxel: np.ndarray,
+    coor_to_voxelidx: np.ndarray,
+    voxels: np.ndarray,
+    coors: np.ndarray,
+    max_points: int = 35,
+    max_voxels: int = 20000,
+) -> int:
     # need mutex if write in cuda, but numba.cuda don't support mutex.
     # in addition, pytorch don't support cuda in dataloader(tensorflow support this).
     # put all computations to one loop.
     # we shouldn't create large array in main jit code, otherwise
     # decrease performance
-    N = points.shape[0]
-    # ndim = points.shape[1] - 1
+    n = points.shape[0]
     ndim = 3
     grid_size = (coors_range[3:] - coors_range[:3]) / voxel_size
-    # grid_size = np.round(grid_size).astype(np.int64)(np.int32)
     grid_size = np.round(grid_size, 0, grid_size).astype(np.int32)
 
-    lower_bound = coors_range[:3]
-    upper_bound = coors_range[3:]
-    coor = np.zeros(shape=(3, ), dtype=np.int32)
+    coor = np.zeros(shape=(3,), dtype=np.int32)
     voxel_num = 0
     failed = False
-    for i in range(N):
+    for i in range(n):
         failed = False
         for j in range(ndim):
             c = np.floor((points[i, j] - coors_range[j]) / voxel_size[j])
@@ -105,14 +105,16 @@ def _points_to_voxel_kernel(points,
     return voxel_num
 
 
-def points_to_voxel(points,
-                     voxel_size,
-                     coors_range,
-                     max_points=35,
-                     reverse_index=True,
-                     max_voxels=20000):
+def points_to_voxel(
+    points: np.ndarray,
+    voxel_size: np.ndarray,
+    coors_range: list[tuple[int, int]],
+    max_points: int = 35,
+    reverse_index: bool = True,
+    max_voxels: int = 20000,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """convert kitti points(N, >=3) to voxels. This version calculate
-    everything in one loop. now it takes only 4.2ms(complete point cloud) 
+    everything in one loop. now it takes only 4.2ms(complete point cloud)
     with jit and 3.2ghz cpu.(don't calculate other features)
     Note: this function in ubuntu seems faster than windows 10.
 
@@ -124,7 +126,7 @@ def points_to_voxel(points,
             format: xyzxyz, minmax
         max_points: int. indicate maximum points contained in a voxel.
         reverse_index: boolean. indicate whether return reversed coordinates.
-            if points has xyz format and reverse_index is True, output 
+            if points has xyz format and reverse_index is True, output
             coordinates will be zyx format, but points in features always
             xyz format.
         max_voxels: int. indicate maximum voxels this function create.
@@ -145,38 +147,56 @@ def points_to_voxel(points,
     if reverse_index:
         voxelmap_shape = voxelmap_shape[::-1]
     # don't create large array in jit(nopython=True) code.
-    num_points_per_voxel = np.zeros(shape=(max_voxels, ), dtype=np.int32)
+    num_points_per_voxel = np.zeros(shape=(max_voxels,), dtype=np.int32)
     coor_to_voxelidx = -np.ones(shape=voxelmap_shape, dtype=np.int32)
     voxels = np.zeros(
-        shape=(max_voxels, max_points, points.shape[-1]), dtype=points.dtype)
+        shape=(max_voxels, max_points, points.shape[-1]), dtype=points.dtype
+    )
     coors = np.zeros(shape=(max_voxels, 3), dtype=np.int32)
     if reverse_index:
         voxel_num = _points_to_voxel_reverse_kernel(
-            points, voxel_size, coors_range, num_points_per_voxel,
-            coor_to_voxelidx, voxels, coors, max_points, max_voxels)
+            points,
+            voxel_size,
+            coors_range,
+            num_points_per_voxel,
+            coor_to_voxelidx,
+            voxels,
+            coors,
+            max_points,
+            max_voxels,
+        )
 
     else:
         voxel_num = _points_to_voxel_kernel(
-            points, voxel_size, coors_range, num_points_per_voxel,
-            coor_to_voxelidx, voxels, coors, max_points, max_voxels)
+            points,
+            voxel_size,
+            coors_range,
+            num_points_per_voxel,
+            coor_to_voxelidx,
+            voxels,
+            coors,
+            max_points,
+            max_voxels,
+        )
 
     coors = coors[:voxel_num]
     voxels = voxels[:voxel_num]
     num_points_per_voxel = num_points_per_voxel[:voxel_num]
-    # voxels[:, :, -3:] = voxels[:, :, :3] - \
-    #     voxels[:, :, :3].sum(axis=1, keepdims=True)/num_points_per_voxel.reshape(-1, 1, 1)
+
     return voxels, coors, num_points_per_voxel
 
 
 @numba.jit(nopython=True)
-def bound_points_jit(points, upper_bound, lower_bound):
+def bound_points_jit(
+    points: np.ndarray, upper_bound: np.ndarray, lower_bound: np.ndarray
+) -> np.ndarray:
     # to use nopython=True, np.bool is not supported. so you need
     # convert result to np.bool after this function.
-    N = points.shape[0]
+    n = points.shape[0]
     ndim = points.shape[1]
-    keep_indices = np.zeros((N, ), dtype=np.int32)
+    keep_indices = np.zeros((n,), dtype=np.int32)
     success = 0
-    for i in range(N):
+    for i in range(n):
         success = 1
         for j in range(ndim):
             if points[i, j] < lower_bound[j] or points[i, j] >= upper_bound[j]:

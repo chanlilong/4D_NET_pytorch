@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 # ------------------------------------------------------------------------
 # Modified from DETR (https://github.com/facebookresearch/detr)
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
@@ -394,14 +395,14 @@ class Criterion(nn.Module):
     ) -> dict[str, Tensor]:
         """Compute the cardinality error, ie the absolute error in the number of predicted non-empty boxes
         This is not really a loss, it is intended for logging purposes only. It doesn't propagate gradients
-        """  # noqa: E501
+        """
         pred_logits = outputs['pred_logits']
         device = pred_logits.device
         tgt_lengths = torch.as_tensor(
             [len(v['labels']) for v in targets],
             device=device,
         )
-        # Count the number of predictions that are NOT "no-object" (which is the last class)  # noqa: E501
+        # Count the number of predictions that are NOT "no-object" (which is the last class)
         card_pred = (pred_logits.argmax(-1) != pred_logits.shape[-1] - 1).sum(1)
         card_err = F.l1_loss(card_pred.float(), tgt_lengths.float())
         losses = {'cardinality_error': card_err}
@@ -463,7 +464,8 @@ class Criterion(nn.Module):
         return losses
 
     def _get_src_permutation_idx(
-        self, indices: list[tuple[list[int], list[int]]]
+        self,
+        indices: list[tuple[list[int], list[int]]],
     ) -> tuple[Tensor, Tensor]:
         # permute predictions following indices
         batch_idx = torch.cat([
@@ -473,7 +475,8 @@ class Criterion(nn.Module):
         return batch_idx, src_idx
 
     def _get_tgt_permutation_idx(
-        self, indices: list[tuple[list[int], list[int]]]
+        self,
+        indices: list[tuple[list[int], list[int]]],
     ) -> tuple[Tensor, Tensor]:
         # permute targets following indices
         batch_idx = torch.cat([
@@ -500,7 +503,9 @@ class Criterion(nn.Module):
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
 
     def forward(
-        self, outputs: dict[str, Tensor], targets: dict[str, Tensor]
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
     ) -> dict[str, Tensor]:
         """This performs the loss computation.
         Parameters:

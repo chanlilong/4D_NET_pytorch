@@ -1,4 +1,7 @@
+# ruff: noqa: N801
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -8,9 +11,12 @@ from detector_models import resnet_backbone
 from torch import nn
 from torch.nn.functional import grid_sample
 
+if TYPE_CHECKING:
+    from torch import Tensor
+
 
 class Pointnet_Resblock(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
 
         self.l1 = torch.nn.Conv2d(in_channels, out_channels, (1, 1))
@@ -23,7 +29,7 @@ class Pointnet_Resblock(torch.nn.Module):
         self.relu1 = torch.nn.ReLU(inplace=True)
         self.relu2 = torch.nn.ReLU(inplace=True)
 
-    def forward(self, pillars):
+    def forward(self, pillars: Tensor) -> Tensor:
         x = self.l1(pillars)
         x = self.norm1(x)
         x = self.relu1(x)
@@ -36,7 +42,12 @@ class Pointnet_Resblock(torch.nn.Module):
 
 
 class Pillar_Network_SECOND(nn.Module):
-    def __init__(self, input_features=9, n_features=64, n_pnts_pillar=64):
+    def __init__(
+        self,
+        input_features: Tensor = 9,
+        n_features: Tensor = 64,
+        n_pnts_pillar: Tensor = 64,
+    ) -> None:
         super().__init__()
         self.n_features = n_features
         self.conv1 = Pointnet_Resblock(input_features, n_features // 4)
@@ -45,7 +56,7 @@ class Pillar_Network_SECOND(nn.Module):
         self.norm2 = torch.nn.BatchNorm2d(n_features)
         self.maxpool = nn.MaxPool2d((1, n_pnts_pillar))
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x = self.conv1(x)  # torch.Size([1, 64, 2060,64])
         x = self.conv2(x)
         x = self.conv3(x)
@@ -55,106 +66,20 @@ class Pillar_Network_SECOND(nn.Module):
         return x
 
 
-class Pseudo_IMG_Scatter(torch.nn.Module):
-    def __init__(self, xsize, ysize):
-        super().__init__()
-        self.xsize = xsize
-        self.ysize = ysize
-
-    def forward(self, pillars, coord, contains_pillars):
-        batch, n_pillars, n_features = pillars.shape  # torch.Size([4, 16384, 64])
-        masks = (contains_pillars == 1).bool().view(batch, -1)
-        filtered_outs = pillars[masks.view(batch, -1)]
-        filtered_coors = coord[masks.view(batch, -1)]
-        pseudo_img = (
-            torch.zeros(batch, self.xsize * self.ysize, n_features)
-            .to(pillars.device)
-            .type(pillars.type())
-        )
-        interval_temp = contains_pillars.sum(1).cumsum(0)
-        interval = (
-            torch.zeros(contains_pillars.shape[0] + 1)
-            .to(pillars.device)
-            .type(pillars.type())
-        )
-        interval[1:] = interval_temp
-        interval = interval.type(torch.int64)
-
-        for batch_idx, idx1, idx2 in zip(
-            np.arange(batch),
-            interval[:-1],
-            interval[1:],
-            strict=False,
-        ):
-            this_coords = filtered_coors[idx1:idx2].type(torch.int64)
-            indices = this_coords[:, 1] * self.xsize + this_coords[:, 2]
-            pseudo_img[batch_idx][indices.type(torch.int64), :] += filtered_outs[
-                idx1:idx2
-            ].type(pillars.type())
-
-        return pseudo_img.view(batch, self.xsize, self.ysize, n_features).permute(
-            0,
-            3,
-            1,
-            2,
-        )
-
-
-class Pillars_to_PseudoIMG(torch.nn.Module):
-    """
-    Converts Pillars to Pseudo Image
-
-    Args:
-        outs: Output of Neural Network(Pillar_Network_SECOND) shape-> n_batch,n_max_pillars,n_features
-        coords: Tensor with shape [n_batch,3(zxy)] to indicate where the pillars are located
-        contains_pillars: 1D Tensor that Contains 1 or 0 to indicate if pillar is empty(0) or not
-    """
-
-    def __init__(self, size):
-        super().__init__()
-        self.xsize, self.ysize = size
-        self.xsize, self.ysize = int(self.xsize) + 1, int(self.ysize) + 1
-
-    def forward(self, pillars, coord, contains_pillars):
-        batch, n_pillars, n_features = pillars.shape  # torch.Size([4, 16384, 64])
-        masks = (contains_pillars == 1).bool().squeeze(-1)
-        filtered_outs = pillars[masks]
-        filtered_coors = coord[masks]
-        pseudo_img = torch.zeros(batch, self.xsize * self.ysize, n_features).to(
-            pillars.device,
-        )
-        interval_temp = contains_pillars.sum(1).cumsum(0)
-        interval = torch.zeros(contains_pillars.shape[0] + 1).to(pillars.device)
-        interval[1:] = interval_temp
-        interval = interval.long()
-
-        for batch_idx, idx1, idx2 in zip(
-            np.arange(batch),
-            interval[:-1],
-            interval[1:],
-            strict=False,
-        ):
-            this_coords = filtered_coors[idx1:idx2].long()
-            indices = this_coords[:, 1] * self.xsize + this_coords[:, 2]
-            pseudo_img[batch_idx][indices.long(), :] += filtered_outs[idx1:idx2].float()
-
-        return pseudo_img.view(batch, self.xsize, self.ysize, n_features).permute(
-            0,
-            3,
-            1,
-            2,
-        )
-
-
 class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
-    def __init__(self, xsize, ysize):
+    def __init__(self, xsize: int, ysize: int) -> None:
         super().__init__()
         self.xsize = xsize
         self.ysize = ysize
         self.xsize, self.ysize = int(self.xsize) + 1, int(self.ysize) + 1
         self.dynamic_layer = torch.nn.Linear(64, 3)  # 3 scales
 
-    def forward(self, pillars, coord, contains_pillars):
+    def forward(
+        self,
+        pillars: Tensor,
+        coord: Tensor,
+        contains_pillars: Tensor,
+    ) -> Tensor:
         batch, n_pillars, n_features = pillars.shape  # torch.Size([4, 16384, 64])
         masks = (contains_pillars == 1).bool().view(batch, -1)
         filtered_outs = pillars[masks.view(batch, -1)]  # torch.Size([11944, 64])
@@ -209,14 +134,21 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
 
 
 class RGB_Net(torch.nn.Module):
-    def __init__(self, xsize, ysize):
+    def __init__(self, xsize: int, ysize: int) -> None:
         super().__init__()
         self.xsize = xsize + 1
         self.ysize = ysize + 1
         self.cnn = resnet_backbone(dims=64)
         self.fpn = BiFPN(64, 64)
 
-    def forward(self, RGB, dynamic_img, pillar_img_pts, rgb_coors, contains_rgb):
+    def forward(
+        self,
+        RGB: Tensor,
+        dynamic_img: Tensor,
+        pillar_img_pts: Tensor,
+        rgb_coors: Tensor,
+        contains_rgb: Tensor,
+    ) -> Tensor:
         rgb_out = self.cnn(RGB)
         _, _, c3, c4, c5 = self.fpn(rgb_out)
         batch, C, _, _ = c3.shape
@@ -235,9 +167,6 @@ class RGB_Net(torch.nn.Module):
             .to(RGB.device)
             .type(RGB.type())
         )
-
-        # c3.shape,c4.shape,c5.shape(torch.Size([1, 64, 78, 24]),torch.Size([1, 64, 39, 12]),torch.Size([1, 64, 20, 6]))
-        #
 
         for batch_i, (a, b, c, pnts_2d, coors, contain) in enumerate(
             zip(c3, c4, c5, pillar_img_pts, rgb_coors, contains_rgb, strict=False),
@@ -283,17 +212,20 @@ class RGB_Net(torch.nn.Module):
 class NET_4D_EffDet(torch.nn.Module):
     def __init__(
         self,
-        anchor_dict,
-        n_input_features=9,
-        n_features=64,
-        n_pnt_pillar=100,
-        xyz_range=np.array([0, -40.32, -2, 80.64, 40.32, 3]),
-        xy_voxel_size=np.array([0.16, 0.16]),
-        n_classes=3,
-        rgb_deform=False,
-    ):
+        anchor_dict: dict[str, np.ndarray],
+        n_input_features: int = 9,
+        n_features: int = 64,
+        n_pnt_pillar: int = 100,
+        xyz_range: np.ndarray | None = None,
+        xy_voxel_size: np.ndarray | None = None,
+        n_classes: int = 3,
+    ) -> None:
         super().__init__()
-        # self.dummy_param = nn.Parameter(torch.empty(0))
+        if xyz_range is None:
+            xyz_range = np.array([0, -40.32, -2, 80.64, 40.32, 3])
+        if xy_voxel_size is None:
+            xy_voxel_size = np.array([0.16, 0.16])
+
         self.voxel_x_grid_size = int((xyz_range[3] - xyz_range[0]) // xy_voxel_size[0])
         self.voxel_y_grid_size = int((xyz_range[4] - xyz_range[1]) // xy_voxel_size[1])
 
@@ -316,19 +248,18 @@ class NET_4D_EffDet(torch.nn.Module):
         self.rgb_net = RGB_Net(
             self.voxel_x_grid_size,
             self.voxel_y_grid_size,
-            deform=rgb_deform,
         )
 
     def forward(
         self,
-        img,
-        pillar,
-        coord,
-        contains_pillars,
-        pillar_img_pts,
-        rgb_coors,
-        contains_rgb,
-    ):
+        img: Tensor,
+        pillar: Tensor,
+        coord: Tensor,
+        contains_pillars: Tensor,
+        pillar_img_pts: Tensor,
+        rgb_coors: Tensor,
+        contains_rgb: Tensor,
+    ) -> tuple[dict[str, Tensor], Tensor, Tensor]:
         pillar = pillar.permute(0, 3, 1, 2)
         learned_pillars = self.pillar_net(pillar)
         learned_pillars = learned_pillars.squeeze(-1).permute(0, 2, 1)

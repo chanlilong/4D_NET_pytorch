@@ -371,7 +371,7 @@ class Efficient_Det(nn.Module):
             bbox = bbox.view(n_batch, h * w, self.n_anchors, 7)
             clss = clss.view(n_batch, h * w * self.n_anchors, self.n_classes)
 
-            Y, X = torch.meshgrid(  # noqa: N806
+            Y, X = torch.meshgrid(
                 torch.linspace(-1, 1, w + 1).type(bbox.type()),
                 torch.linspace(0, 1, h + 1).type(bbox.type()),
             )
