@@ -1,4 +1,4 @@
-import time
+from __future__ import annotations
 
 import numba
 import numpy as np
@@ -51,6 +51,7 @@ def _points_to_voxel_reverse_kernel(points,
             voxels[voxelidx, num] = points[i]
             num_points_per_voxel[voxelidx] += 1
     return voxel_num
+
 
 @numba.jit(nopython=True)
 def _points_to_voxel_kernel(points,

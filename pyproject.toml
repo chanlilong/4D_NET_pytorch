@@ -1,0 +1,81 @@
+[project]
+name = "my-project"
+version = "0.1.0"
+dependencies = ["numba", "pandas", "seaborn", "ruff", "mypy"]
+
+[tool.ruff]
+preview = true
+fix = true
+include = ['*.py']
+exclude = [".venv", ".git", "*.pyc", "__pycache__", "tss_orm/migrations/"]
+lint.ignore = []
+line-length = 88
+# See https://beta.ruff.rs/docs/rules/ for more information
+lint.select = [
+    "C9",
+    "E",
+    "F",
+    "W",
+    "B",
+    "I",
+    "N",
+    "UP",
+    "ANN",
+    "A",
+    "S",
+    "COM",
+    "C4",
+    "ICN",
+    "PYI",
+    "PIE",
+    "Q",
+    "TCH",
+    "PTH",
+    "NPY",
+    "RUF",
+    "DJ",
+    "SIM",
+    "PD",
+    "FURB",
+    "TID",
+    "FBT",
+]
+target-version = "py311"
+# show-source = true
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "single"
+multiline-quotes = "double"
+
+[tool.ruff.lint.isort]
+force-single-line = true
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.flake8-builtins]
+builtins-ignorelist = ["id", "type", "help"]
+
+[tool.ruff.lint.flake8-import-conventions]
+[tool.ruff.lint.flake8-import-conventions.aliases]
+constants = "const"
+scrapper_utils = "su"
+
+[tool.pytest.ini_options]
+python_files = ["*_test.py"]
+addopts = "-p no:warnings -s"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "."
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+exclude = ["tests"]
+disable_error_code = "import-untyped"
