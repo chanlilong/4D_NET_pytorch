@@ -42,7 +42,7 @@ class Calibration:
     TODO(rqi): do matrix multiplication only once for each projection.
     """
 
-    def __init__(self, calib_filepath):
+    def __init__(self, calib_filepath: str):
         calibs = self.read_calib_file(calib_filepath)
         # Projection matrix from rect camera coord to image2 coord
         self.P = calibs['P2']
