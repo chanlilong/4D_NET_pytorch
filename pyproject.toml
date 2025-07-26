@@ -1,7 +1,7 @@
 [project]
 name = "my-project"
 version = "0.1.0"
-dependencies = ["numba", "pandas", "seaborn", "ruff", "mypy", "scipy"]
+dependencies = ["numba", "pandas", "seaborn", "ruff", "mypy", "scipy", "timm"]
 
 [tool.ruff]
 preview = true
