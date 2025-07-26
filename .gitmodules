@@ -2,6 +2,6 @@
 	path = evaluation_code
 	url = https://github.com/jacoblambert/3d_lidar_detection_evaluation.git
 
-[submodule "rotated_iou_loss"]
+[submodule "models/losses/rotated_iou_loss"]
 	path = models/losses/rotated_iou_loss
 	url = https://github.com/lilanxiao/Rotated_IoU.git
