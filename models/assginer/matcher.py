@@ -22,7 +22,7 @@ from utils.box_ops import box_cxcywh_to_xyxy
 import torch.distributed as dist
 import torch.nn.functional as F
 from mmcv.ops.iou3d import boxes_iou_bev
-from mmdet3d.core.bbox.iou_calculators import bbox_overlaps_3d
+from mmdet3d.structures.ops import bbox_overlaps_3d
 from oriented_iou_loss import cal_diou_3d
 
 
