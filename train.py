@@ -200,7 +200,7 @@ def show_model_inference():
 
     fig4, ax4 = plt.subplots(figsize=(10, 10))
     ax4.imshow(
-        pseudo_img[0, 64:].max(0).values.detach().cpu().numpy(),
+        pseudo_img[0, 64:].max(0).values.detach().cpu().numpy(),  # noqa: PD011
         cmap='jet',
     )  # From RGB
     ax4.axis('tight')

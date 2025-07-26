@@ -1,25 +1,27 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import cv2
 import numpy as np
-import torch
 from matplotlib.lines import Line2D
+from .calibration_util import roty
+
+if TYPE_CHECKING:
+    from matplotlib.pyplot import Axes
+
+    from dataset.reader import Label3D
+    from utils.calibration_util import Calibration
 
 
-def roty(t):
-    """Rotation about the y-axis."""
-    c = np.cos(t)
-    s = np.sin(t)
-    return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
-
-
-def box_cxcywh_to_xyxy(x):
-    x_c, y_c, w, h = x.unbind(1)
-    b = [(x_c - 0.5 * w), (y_c - 0.5 * h), (x_c + 0.5 * w), (y_c + 0.5 * h)]
-    return torch.stack(b, dim=1)
-
-
-def draw_rectangle(ax, centre, theta, width, height, color=(1, 1, 1)):
+def draw_rectangle(
+    ax: Axes,
+    centre: float,
+    theta: float,
+    width: float,
+    height: float,
+    color=(1, 1, 1),
+) -> None:
     c, s = np.cos(theta), np.sin(theta)
     R = np.matrix(f'{c} {-s}; {s} {c}')
 
@@ -40,7 +42,7 @@ def draw_rectangle(ax, centre, theta, width, height, color=(1, 1, 1)):
     ax.add_line(line)
 
 
-def compute_box_3d(obj, calib):
+def compute_box_3d(obj: Label3D, calib: Calibration) -> tuple[np.ndarray, np.ndarray]:
     """Takes an object and a projection matrix (P) and projects the 3d
     bounding box into the image plane.
     Returns:
@@ -78,7 +80,12 @@ def compute_box_3d(obj, calib):
     return corners_2d, np.transpose(corners_3d)
 
 
-def draw_projected_box3d(image, qs, color=(255, 255, 255), thickness=2):
+def draw_projected_box3d(
+    image: np.ndarray,
+    qs: np.ndarray,
+    color: tuple[float, float, float] = (255, 255, 255),
+    thickness: int = 2,
+) -> np.ndarray:
     """Draw 3d bounding box in image
     qs: (8,3) array of vertices for the 3d box in following order:
         1 -------- 0

@@ -444,7 +444,7 @@ def KITTI_collate_fn(data):
         imgs,
         [pillars, coords, contains_pillars],
         [rgbpillars, rgbcoords, rgbcontains_pillars],
-        [x for x in outputs],
+        list(outputs),
     )
 
 
@@ -467,6 +467,6 @@ def KITTI_collate_fn_Wcalib(data):
         imgs,
         [pillars, coords, contains_pillars],
         [rgbpillars, rgbcoords, rgbcontains_pillars],
-        [x for x in outputs],
-        [x for x in calibs],
+        list(outputs),
+        list(calibs),
     )

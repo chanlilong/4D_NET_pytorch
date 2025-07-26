@@ -24,8 +24,7 @@ def _points_to_voxel_reverse_kernel(
     ndim = 3
     ndim_minus_1 = ndim - 1
     grid_size = (coors_range[3:] - coors_range[:3]) / voxel_size
-    # np.round(grid_size)
-    # grid_size = np.round(grid_size).astype(np.int64)(np.int32)
+
     grid_size = np.round(grid_size, 0, grid_size).astype(np.int32)
     coor = np.zeros(shape=(3,), dtype=np.int32)
     voxel_num = 0
@@ -110,8 +109,9 @@ def points_to_voxel(
     voxel_size: np.ndarray,
     coors_range: list[tuple[int, int]],
     max_points: int = 35,
-    reverse_index: bool = True,
     max_voxels: int = 20000,
+    *,
+    reverse_index: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """convert kitti points(N, >=3) to voxels. This version calculate
     everything in one loop. now it takes only 4.2ms(complete point cloud)

@@ -173,28 +173,28 @@ def inverse_rigid_trans(Tr):
     return inv_Tr
 
 
-def rotx(t):
+def rotx(t: np.ndarray) -> np.ndarray:
     """3D Rotation about the x-axis."""
     c = np.cos(t)
     s = np.sin(t)
     return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
 
 
-def roty(t):
+def roty(t: np.ndarray) -> np.ndarray:
     """Rotation about the y-axis."""
     c = np.cos(t)
     s = np.sin(t)
     return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
 
 
-def rotz(t):
+def rotz(t: np.ndarray) -> np.ndarray:
     """Rotation about the z-axis."""
     c = np.cos(t)
     s = np.sin(t)
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
 
 
-def transform_from_rot_trans(R, t):
+def transform_from_rot_trans(R: np.ndarray, t: np.ndarray) -> np.ndarray:
     """Transforation matrix from rotation matrix and translation vector."""
     R = R.reshape(3, 3)
     t = t.reshape(3, 1)
