@@ -8,7 +8,7 @@ preview = true
 fix = true
 include = ['*.py']
 exclude = [".venv", ".git", "*.pyc", "__pycache__", "tss_orm/migrations/"]
-lint.ignore = []
+lint.ignore = ["S101"]
 line-length = 88
 # See https://beta.ruff.rs/docs/rules/ for more information
 lint.select = [

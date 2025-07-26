@@ -1,8 +1,4 @@
 # ------------------------------------------------------------------------
-# Deformable DETR
-# Copyright (c) 2020 SenseTime. All Rights Reserved.
-# Licensed under the Apache License, Version 2.0 [see LICENSE for details]
-# ------------------------------------------------------------------------
 # Modified from DETR (https://github.com/facebookresearch/detr)
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 # ------------------------------------------------------------------------
@@ -12,6 +8,8 @@ Modules to compute the matching cost and solve the corresponding LSAP.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import torch
 import torch.distributed as dist
@@ -23,6 +21,9 @@ from torch import nn
 
 from models.losses.rotated_iou_loss.oriented_iou_loss import cal_diou_3d
 from utils.box_ops import box_cxcywh_to_xyxy
+
+if TYPE_CHECKING:
+    from torch import Tensor
 
 
 class HungarianMatcher(nn.Module):
@@ -38,7 +39,7 @@ class HungarianMatcher(nn.Module):
         cost_class: float = 1,
         cost_bbox: float = 8,
         cost_giou: float = 3,
-    ):
+    ) -> None:
         """Creates the matcher
 
         Params:
@@ -54,7 +55,7 @@ class HungarianMatcher(nn.Module):
             'all costs cant be 0'
         )
 
-    def convert_to_axisaligned(self, xywlr):
+    def convert_to_axisaligned(self, xywlr: Tensor) -> Tensor:
         axis_aligned_bboxes = []
 
         for bbox in xywlr:
@@ -89,7 +90,11 @@ class HungarianMatcher(nn.Module):
 
         return torch.cat(axis_aligned_bboxes, 0).to(xywlr.device)
 
-    def forward(self, outputs, targets):
+    def forward(
+        self,
+        outputs: dict[str, Tensor],
+        targets: list[dict[str, Tensor]],
+    ) -> list:
         """Performs the matching
 
         Params:
@@ -138,14 +143,6 @@ class HungarianMatcher(nn.Module):
             # Compute the L1 cost between boxes
             cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
 
-            # Compute the giou cost betwen boxes
-            # cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox),
-            #                                 box_cxcywh_to_xyxy(tgt_bbox))
-            # out_bbox -> x,y,z,l,w,h,r
-
-            # b1 = torch.cat([out_bbox[...,0:6],(out_bbox[...,6:7]*2-1)*np.pi],-1) #x,y,z,w,l,h,r
-            # b2 = torch.cat([tgt_bbox[...,0:6],(tgt_bbox[...,6:7]*2-1)*np.pi],-1)
-
             try:
                 b1 = torch.cat(
                     [out_bbox[..., 0:6], (out_bbox[..., 6:7])],
@@ -156,22 +153,19 @@ class HungarianMatcher(nn.Module):
                     -1,
                 )  # "x","y","z","l","w","h","yaw"
                 cost_giou = -bbox_overlaps_3d(b1, b2, coordinate='lidar')
-                # cost_giou, _ = cal_diou_3d(b1.unsqueeze(0),b2.unsqueeze(0),enclosing_type="smallest")
 
-                # + self.cost_giou * cost_giou
-                C = (
+                cost = (
                     self.cost_bbox * cost_bbox
                     + self.cost_class * cost_class
                     + self.cost_giou * cost_giou
                 )
-                C = C.view(bs, num_queries, -1).cpu()
+                cost = cost.view(bs, num_queries, -1).cpu()
 
                 sizes = [len(v['boxes']) for v in targets]
-                # max_val = torch.maximum(cost_bbox,cost_class).max()
-                # indices = [linear_sum_assignment(torch.nan_to_num(c[i],max_val,max_val,max_val)) for i, c in enumerate(C.split(sizes, -1))]
+
                 indices = [
                     linear_sum_assignment(c[i])
-                    for i, c in enumerate(C.split(sizes, -1))
+                    for i, c in enumerate(cost.split(sizes, -1))
                 ]
                 return [
                     (
@@ -198,17 +192,17 @@ class HungarianMatcher(nn.Module):
                     xyxyr2 = torch.cat([xyxy2, tgt_bbox[..., 6:]], -1).view(-1, 5)
                     cost_giou = -boxes_iou_bev(xyxyr1, xyxyr2)
                     # + self.cost_giou * cost_giou
-                    C = (
+                    cost = (
                         self.cost_bbox * cost_bbox
                         + self.cost_class * cost_class
                         + self.cost_giou * cost_giou
                     )
-                    C = C.view(bs, num_queries, -1).cpu()
+                    cost = cost.view(bs, num_queries, -1).cpu()
 
                     sizes = [len(v['boxes']) for v in targets]
                     indices = [
                         linear_sum_assignment(c[i])
-                        for i, c in enumerate(C.split(sizes, -1))
+                        for i, c in enumerate(cost.split(sizes, -1))
                     ]
                     return [
                         (
@@ -218,13 +212,13 @@ class HungarianMatcher(nn.Module):
                         for i, j in indices
                     ]
                 except:
-                    C = self.cost_bbox * cost_bbox + self.cost_class * cost_class
-                    C = C.view(bs, num_queries, -1).cpu()
+                    cost = self.cost_bbox * cost_bbox + self.cost_class * cost_class
+                    cost = cost.view(bs, num_queries, -1).cpu()
 
                     sizes = [len(v['boxes']) for v in targets]
                     indices = [
                         linear_sum_assignment(c[i])
-                        for i, c in enumerate(C.split(sizes, -1))
+                        for i, c in enumerate(cost.split(sizes, -1))
                     ]
                     return [
                         (
@@ -235,23 +229,25 @@ class HungarianMatcher(nn.Module):
                     ]
 
 
-def is_dist_avail_and_initialized():
+def is_dist_avail_and_initialized() -> bool:
     if not dist.is_available():
         return False
-    if not dist.is_initialized():
-        return False
-    return True
+    return dist.is_initialized()
 
 
 @torch.no_grad()
-def accuracy(output, target, topk=(1,)):
+def accuracy(
+    output: Tensor,
+    target: Tensor,
+    topk: tuple[int] = (1,),
+) -> list[Tensor]:
     """Computes the precision@k for the specified values of k"""
     if target.numel() == 0:
         return [torch.zeros([], device=output.device)]
     maxk = max(topk)
     batch_size = target.size(0)
 
-    _, pred = output.topk(maxk, 1, True, True)
+    _, pred = output.topk(maxk, 1, largest=True, sorted=True)
     pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
 
@@ -262,19 +258,19 @@ def accuracy(output, target, topk=(1,)):
     return res
 
 
-def get_world_size():
+def get_world_size() -> int:
     if not is_dist_avail_and_initialized():
         return 1
     return dist.get_world_size()
 
 
 def sigmoid_focal_loss(
-    inputs,
-    targets,
-    num_boxes,
+    inputs: Tensor,
+    targets: Tensor,
+    num_boxes: int,
     alpha: float = 0.25,
     gamma: float = 2,
-):
+) -> Tensor:
     """
     Loss used in RetinaNet for dense detection: https://arxiv.org/abs/1708.02002.
     Args:
@@ -311,10 +307,10 @@ class Criterion(nn.Module):
 
     def __init__(
         self,
-        num_classes,
-        losses=['labels', 'cardinality', 'boxes'],
-        focal_alpha=0.25,
-    ):
+        num_classes: int,
+        losses: list[str] = ['labels', 'cardinality', 'boxes'],
+        focal_alpha: float = 0.25,
+    ) -> None:
         """Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -335,7 +331,15 @@ class Criterion(nn.Module):
             'loss_giou': self.matcher.cost_giou,
         }
 
-    def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
+    def loss_labels(
+        self,
+        outputs: Tensor,
+        targets: Tensor,
+        indices: list[tuple[list[int], list[int]]],
+        num_boxes: int,
+        *,
+        log: bool = True,
+    ) -> dict[str, Tensor]:
         """Classification loss (NLL)
         targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
         """
@@ -382,23 +386,34 @@ class Criterion(nn.Module):
         return losses
 
     @torch.no_grad()
-    def loss_cardinality(self, outputs, targets, indices, num_boxes):
+    def loss_cardinality(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        **kwargs,  # noqa: ANN003
+    ) -> dict[str, Tensor]:
         """Compute the cardinality error, ie the absolute error in the number of predicted non-empty boxes
         This is not really a loss, it is intended for logging purposes only. It doesn't propagate gradients
-        """
+        """  # noqa: E501
         pred_logits = outputs['pred_logits']
         device = pred_logits.device
         tgt_lengths = torch.as_tensor(
             [len(v['labels']) for v in targets],
             device=device,
         )
-        # Count the number of predictions that are NOT "no-object" (which is the last class)
+        # Count the number of predictions that are NOT "no-object" (which is the last class)  # noqa: E501
         card_pred = (pred_logits.argmax(-1) != pred_logits.shape[-1] - 1).sum(1)
         card_err = F.l1_loss(card_pred.float(), tgt_lengths.float())
         losses = {'cardinality_error': card_err}
         return losses
 
-    def loss_boxes(self, outputs, targets, indices, num_boxes):
+    def loss_boxes(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        indices: list[tuple[list[int], list[int]]],
+        num_boxes: int,
+    ) -> dict[str, Tensor]:
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
         targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
         The target boxes are expected in format (center_x, center_y, h, w), normalized by the image size.
@@ -447,42 +462,9 @@ class Criterion(nn.Module):
 
         return losses
 
-    def loss_masks(self, outputs, targets, indices, num_boxes):
-        """Compute the losses related to the masks: the focal loss and the dice loss.
-        targets dicts must contain the key "masks" containing a tensor of dim [nb_target_boxes, h, w]
-        """
-        assert 'pred_masks' in outputs
-
-        src_idx = self._get_src_permutation_idx(indices)
-        tgt_idx = self._get_tgt_permutation_idx(indices)
-
-        src_masks = outputs['pred_masks']
-
-        # TODO use valid to mask invalid areas due to padding in loss
-        target_masks, valid = nested_tensor_from_tensor_list([
-            t['masks'] for t in targets
-        ]).decompose()
-        target_masks = target_masks.to(src_masks)
-
-        src_masks = src_masks[src_idx]
-        # upsample predictions to the target size
-        src_masks = interpolate(
-            src_masks[:, None],
-            size=target_masks.shape[-2:],
-            mode='bilinear',
-            align_corners=False,
-        )
-        src_masks = src_masks[:, 0].flatten(1)
-
-        target_masks = target_masks[tgt_idx].flatten(1)
-
-        losses = {
-            'loss_mask': sigmoid_focal_loss(src_masks, target_masks, num_boxes),
-            'loss_dice': dice_loss(src_masks, target_masks, num_boxes),
-        }
-        return losses
-
-    def _get_src_permutation_idx(self, indices):
+    def _get_src_permutation_idx(
+        self, indices: list[tuple[list[int], list[int]]]
+    ) -> tuple[Tensor, Tensor]:
         # permute predictions following indices
         batch_idx = torch.cat([
             torch.full_like(src, i) for i, (src, _) in enumerate(indices)
@@ -490,7 +472,9 @@ class Criterion(nn.Module):
         src_idx = torch.cat([src for (src, _) in indices])
         return batch_idx, src_idx
 
-    def _get_tgt_permutation_idx(self, indices):
+    def _get_tgt_permutation_idx(
+        self, indices: list[tuple[list[int], list[int]]]
+    ) -> tuple[Tensor, Tensor]:
         # permute targets following indices
         batch_idx = torch.cat([
             torch.full_like(tgt, i) for i, (_, tgt) in enumerate(indices)
@@ -498,17 +482,26 @@ class Criterion(nn.Module):
         tgt_idx = torch.cat([tgt for (_, tgt) in indices])
         return batch_idx, tgt_idx
 
-    def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
+    def get_loss(
+        self,
+        loss: nn.Module,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        indices: list[tuple[list[int], list[int]]],
+        num_boxes: int,
+        **kwargs,  # noqa: ANN003
+    ) -> Tensor:
         loss_map = {
             'labels': self.loss_labels,
             'cardinality': self.loss_cardinality,
             'boxes': self.loss_boxes,
-            'masks': self.loss_masks,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
 
-    def forward(self, outputs, targets):
+    def forward(
+        self, outputs: dict[str, Tensor], targets: dict[str, Tensor]
+    ) -> dict[str, Tensor]:
         """This performs the loss computation.
         Parameters:
              outputs: dict of tensors, see the output specification of the model for the format
