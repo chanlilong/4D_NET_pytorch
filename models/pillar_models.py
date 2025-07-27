@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-from detector_models import BiFPN
-from detector_models import Efficient_Det
-from detector_models import resnet_backbone
 from torch import nn
 from torch.nn.functional import grid_sample
+
+from models.detector_models import BiFPN
+from models.detector_models import Efficient_Det
+from models.detector_models import resnet_backbone
 
 if TYPE_CHECKING:
     from torch import Tensor

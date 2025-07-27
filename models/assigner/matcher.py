@@ -503,7 +503,13 @@ class Criterion(nn.Module):
             'boxes': self.loss_boxes,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
-        return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
+        return loss_map[loss](
+            outputs=outputs,
+            targets=targets,
+            indices=indices,
+            num_boxes=num_boxes,
+            **kwargs,
+        )
 
     def forward(
         self,

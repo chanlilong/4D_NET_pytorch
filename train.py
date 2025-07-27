@@ -1,6 +1,11 @@
 # ruff: noqa: RUF059, E741
 from __future__ import annotations
 
+import sys
+
+sys.path.append('./models/losses/rotated_iou_loss')
+import argparse
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import cv2
@@ -17,81 +22,50 @@ from dataset.KITTI_dataset import KITTI_collate_fn_Wcalib
 from dataset.KITTI_dataset import KittiDataset
 from models.assigner.matcher import Criterion
 from models.pillar_models import NET_4D_EffDet
+from utils.common import n_pillars
+from utils.common import points_per_pillar
+from utils.common import xy_voxel_size
+from utils.common import xyz_range
 from utils.draw_utils import compute_box_3d
 from utils.draw_utils import draw_projected_box3d
 from utils.draw_utils import draw_rectangle
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from argparse import Namespace
 
     from matplotlib.figure import Figure
+
+
+def parse_args() -> Namespace:
+    parser = argparse.ArgumentParser(
+        description='4D Net Training Script on KITTI Dataset',
+    )
+    parser.add_argument('dataset_path', type=str, help='path to kitti dataset')
+    parser.add_argument('--epochs', type=int, default=100, help='Epochs to train')
+    parser.add_argument('--batch_size', type=int, default=6)
+    parser.add_argument(
+        '--tensorboard_logs',
+        type=str,
+        default='./tensorboard_logs/4dnet_KITTI',
+    )
+
+    # 3. Parse the arguments from the command line
+    args = parser.parse_args()
+    args.dataset_path = Path(args.dataset_path)
+    args.tensorboard_logs = Path(args.tensorboard_logs)
+
+    if not args.tensorboard_logs.exists():
+        args.tensorboard_logs.mkdir(parents=True)
+
+    assert args.dataset_path.exists(), f'Please make sure {args.dataset_path!s} exists'
+    return args
+
 
 if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True
     torch.autograd.set_detect_anomaly(mode=False)
     torch.autograd.profiler.profile(enabled=False)
     torch.autograd.profiler.emit_nvtx(enabled=False)
-    writer = SummaryWriter('./tensorboard_logs/4dnet_KITTI')
-    batch_size = 20
-    xyz_range = np.array([0, -40.32, -2, 80.64, 40.32, 3])
-    xy_voxel_size = np.array([0.16, 0.16])
-    points_per_pillar = 32
-    n_pillars = 12000
-
-    dataset = KittiDataset(
-        xyz_range=xyz_range,
-        xy_voxel_size=xy_voxel_size,
-        points_per_pillar=points_per_pillar,
-        n_pillars=n_pillars,
-    )
-    dataset_vis = KittiDataset(
-        xyz_range=xyz_range,
-        xy_voxel_size=xy_voxel_size,
-        points_per_pillar=points_per_pillar,
-        n_pillars=n_pillars,
-        return_calib=True,
-    )
-    data_loader_train = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        collate_fn=KITTI_collate_fn,
-        num_workers=8,
-        shuffle=True,
-    )
-    dataloader_vis = DataLoader(
-        dataset_vis,
-        batch_size=1,
-        collate_fn=KITTI_collate_fn_Wcalib,
-        num_workers=1,
-        shuffle=True,
-    )
-
-    anchor_dict = np.load(
-        './cluster_kitti_3scales_3anchor.npy',
-        allow_pickle=True,
-    ).item()
-    model = NET_4D_EffDet(
-        anchor_dict,
-        n_classes=4,
-        xyz_range=xyz_range,
-        n_pnt_pillar=points_per_pillar,
-        xy_voxel_size=xy_voxel_size,
-        rgb_deform=False,
-    )
-
-    model_dict = torch.load('./weights/model_KITTI_exp_CP2.pth')
-    model.load_state_dict(model_dict['params'], strict=False)
-
-    criterion = Criterion(4)
-    model = torch.nn.DataParallel(model, device_ids=[0, 1, 2])
-    model.cuda()
-    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print('number of params:', n_parameters)
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04)
-    optimizer.load_state_dict(model_dict['optimizer'])
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
-    lr_scheduler.load_state_dict(model_dict['scheduler'])
 
     def write_to_tensorboard(
         itr: int,
@@ -111,6 +85,8 @@ if __name__ == '__main__':
     def show_model_inference() -> tuple[Figure, Figure, Figure, Figure, Figure]:
         model.eval()
         with torch.no_grad():
+            for data in dataloader_vis:  # noqa: B007
+                break
             (
                 img,
                 (pillars, coord, contains_pillars),
@@ -121,7 +97,7 @@ if __name__ == '__main__':
                 ),
                 targets,
                 calibs,
-            ) = next(dataloader_vis)
+            ) = data
             outputs, pseudo_img, dynamic_img = model(
                 img.cuda(),
                 pillars.float().cuda(),
@@ -238,6 +214,8 @@ if __name__ == '__main__':
         model: torch.nn.Module,
         path: str | Path = './weights/model_KITTI_exp.pth',
     ) -> None:
+        if not Path(path).parent.exists():
+            Path(path).parent.mkdir(parents=True)
         model_dict = {
             'params': model.module.state_dict(),
             'optimizer': optimizer.state_dict(),
@@ -250,10 +228,63 @@ if __name__ == '__main__':
         }
         torch.save(model_dict, path)
 
-    itr = 0
-    itr = model_dict['itr']
+    args = parse_args()
+    writer = SummaryWriter(args.tensorboard_logs)
 
-    for _e in tqdm(range(25)):
+    dataset = KittiDataset(
+        root=args.dataset_path,
+        xyz_range=xyz_range,
+        xy_voxel_size=xy_voxel_size,
+        points_per_pillar=points_per_pillar,
+        n_pillars=n_pillars,
+    )
+    dataset_vis = KittiDataset(
+        root=args.dataset_path,
+        xyz_range=xyz_range,
+        xy_voxel_size=xy_voxel_size,
+        points_per_pillar=points_per_pillar,
+        n_pillars=n_pillars,
+        return_calib=True,
+    )
+    data_loader_train = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        collate_fn=KITTI_collate_fn,
+        num_workers=0,
+        shuffle=True,
+    )
+    dataloader_vis = DataLoader(
+        dataset_vis,
+        batch_size=1,
+        collate_fn=KITTI_collate_fn_Wcalib,
+        num_workers=0,
+        shuffle=True,
+    )
+
+    anchor_dict = np.load(
+        './anchors/cluster_kitti_3scales_3anchor.npy',
+        allow_pickle=True,
+    ).item()
+    model = NET_4D_EffDet(
+        anchor_dict,
+        n_classes=4,
+        xyz_range=xyz_range,
+        n_pnt_pillar=points_per_pillar,
+        xy_voxel_size=xy_voxel_size,
+    )
+
+    criterion = Criterion(num_classes=4)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    model.cuda()
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print('number of params:', n_parameters)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-04)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
+
+    itr = 0
+
+    for _e in tqdm(range(args.epochs)):
         for (
             img,
             (pillars, coord, contains_pillars),
@@ -264,24 +295,24 @@ if __name__ == '__main__':
                 param.grad = None
 
             targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
-            # with torch.cuda.amp.autocast():
-            pred, _, _ = model(
-                img.cuda(),
-                pillars.float().cuda(),
-                coord.cuda(),
-                contains_pillars.cuda(),
-                pillar_img_pts.float().cuda(),
-                rgb_coors.cuda(),
-                contains_rgb.cuda(),
-            )
+            with torch.autocast('cuda', dtype=torch.bfloat16):
+                pred, _, _ = model(
+                    img.cuda(),
+                    pillars.float().cuda(),
+                    coord.cuda(),
+                    contains_pillars.cuda(),
+                    pillar_img_pts.float().cuda(),
+                    rgb_coors.cuda(),
+                    contains_rgb.cuda(),
+                )
 
-            loss_dict = criterion(pred, targets)
-            weight_dict = criterion.weight_dict
-            losses = sum(
-                loss_dict[k] * weight_dict[k] for k in loss_dict if k in weight_dict
-            )
+                loss_dict = criterion(pred, targets)
+                weight_dict = criterion.weight_dict
+                losses = sum(
+                    loss_dict[k] * weight_dict[k] for k in loss_dict if k in weight_dict
+                )
 
-            max_probs = pred['pred_logits'][:, :, 0:].sigmoid().max()
+                max_probs = pred['pred_logits'][:, :, 0:].sigmoid().max()
 
             losses.backward()
             optimizer.step()
@@ -292,7 +323,7 @@ if __name__ == '__main__':
                     write_to_tensorboard(itr, loss_dict, writer)
                     writer.add_scalar(
                         'train_losses/max_probability',
-                        max_probs.detach().cpu().numpy(),
+                        max_probs.detach().cpu().to(torch.float32).numpy(),
                         itr,
                     )
 

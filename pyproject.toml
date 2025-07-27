@@ -3,6 +3,7 @@ name = "my-project"
 version = "0.1.0"
 dependencies = [
     "numba",
+    "numpy==1.26.4",
     "pandas",
     "seaborn",
     "ruff",
@@ -10,6 +11,8 @@ dependencies = [
     "scipy",
     "timm",
     "tensorboardX",
+    "ipykernel",
+    "tensorboard"
 ]
 
 [tool.ruff]

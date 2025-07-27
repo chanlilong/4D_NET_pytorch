@@ -1,4 +1,4 @@
-# ruff: noqa:  N806, N803, N802, E722, E501
+# ruff: noqa: N806, N803, N802, E501
 from __future__ import annotations
 
 from pathlib import Path
@@ -142,40 +142,41 @@ class KittiDataset(Dataset):
             'yaw',
         ]
 
-    def _build_file_index(self, root: str, *, stx: bool, test: bool) -> None:
-        test_set_names = np.load('testset_names.npy')
-        pc_root = root + 'velodyne/'
+    def _build_file_index(self, root: Path, *, stx: bool, test: bool) -> None:
+        test_set_names = np.load(Path(__file__).parent / 'testset_names.npy')
+        pc_root = root / 'velodyne/'
         if stx:
-            pc_root = root + 'stx/'
-        images_root = root + 'image_2/'
-        labels_root = root + 'label_2/'
-        calib_root = root + 'calib/'
+            pc_root = root / 'stx/'
+        images_root = root / 'image_2/'
+        labels_root = root / 'label_2/'
+        calib_root = root / 'calib/'
+
         pc_filenames = list(Path(pc_root).glob('*.bin'))
-        frame_names = [x.split('/')[-1].split('.')[0] for x in pc_filenames]
+        frame_names = [x.stem for x in pc_filenames]
 
         self.images_train = [
-            images_root + f'{x}.png' for x in frame_names if x not in test_set_names
+            images_root / f'{x}.png' for x in frame_names if x not in test_set_names
         ]
         self.pc_filenames_train = [
-            pc_root + f'{x}.bin' for x in frame_names if x not in test_set_names
+            pc_root / f'{x}.bin' for x in frame_names if x not in test_set_names
         ]
         self.calib_train = [
-            calib_root + f'{x}.txt' for x in frame_names if x not in test_set_names
+            calib_root / f'{x}.txt' for x in frame_names if x not in test_set_names
         ]
         self.labels_train = [
-            labels_root + f'{x}.txt' for x in frame_names if x not in test_set_names
+            labels_root / f'{x}.txt' for x in frame_names if x not in test_set_names
         ]
         self.pc_filenames_test = [
-            pc_root + f'{x}.bin' for x in frame_names if x in test_set_names
+            pc_root / f'{x}.bin' for x in frame_names if x in test_set_names
         ]
         self.labels_test = [
-            labels_root + f'{x}.txt' for x in frame_names if x in test_set_names
+            labels_root / f'{x}.txt' for x in frame_names if x in test_set_names
         ]
         if test:
             self.pc_filenames_train = self.pc_filenames_test
             self.labels_train = self.labels_test
             self.images_train = [
-                images_root + f'{x}.png' for x in frame_names if x in test_set_names
+                images_root / f'{x}.png' for x in frame_names if x in test_set_names
             ]
             self.train = False
 
@@ -270,43 +271,43 @@ class KittiDataset(Dataset):
             )
 
     def get_func(self, idx: int) -> KittiReturnType:
-        try:
-            if self.return_calib:
-                (
-                    img,
-                    (pillars, coord, contains_pillars),
-                    (pillar_img_pts2, rgb_coors, contains_rgb),
-                    outputs,
-                    calib,
-                ) = self.getitem(idx)
-                return (
-                    True,
-                    img,
-                    (pillars, coord, contains_pillars),
-                    (pillar_img_pts2, rgb_coors, contains_rgb),
-                    outputs,
-                    calib,
-                )
-            else:
-                (
-                    img,
-                    (pillars, coord, contains_pillars),
-                    (pillar_img_pts2, rgb_coors, contains_rgb),
-                    outputs,
-                ) = self.getitem(idx)
-                return (
-                    True,
-                    img,
-                    (pillars, coord, contains_pillars),
-                    (pillar_img_pts2, rgb_coors, contains_rgb),
-                    outputs,
-                )
+        # try:
+        if self.return_calib:
+            (
+                img,
+                (pillars, coord, contains_pillars),
+                (pillar_img_pts2, rgb_coors, contains_rgb),
+                outputs,
+                calib,
+            ) = self.getitem(idx)
+            return (
+                True,
+                img,
+                (pillars, coord, contains_pillars),
+                (pillar_img_pts2, rgb_coors, contains_rgb),
+                outputs,
+                calib,
+            )
+        else:
+            (
+                img,
+                (pillars, coord, contains_pillars),
+                (pillar_img_pts2, rgb_coors, contains_rgb),
+                outputs,
+            ) = self.getitem(idx)
+            return (
+                True,
+                img,
+                (pillars, coord, contains_pillars),
+                (pillar_img_pts2, rgb_coors, contains_rgb),
+                outputs,
+            )
 
-        except:
-            if self.return_calib:
-                return False, None, (None, None, None), (None, None, None), None, None
-            else:
-                return False, None, (None, None, None), (None, None, None), None
+        # except:
+        #     if self.return_calib:
+        #         return False, None, (None, None, None), (None, None, None), None, None
+        #     else:
+        #         return False, None, (None, None, None), (None, None, None), None
 
     def _normalize_pillars(self, pillars: np.ndaray) -> np.ndarray:
         pillars[..., 0] = (pillars[..., 0] - self.xyz_range[0]) / (

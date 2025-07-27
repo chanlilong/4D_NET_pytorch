@@ -379,12 +379,17 @@ class Efficient_Det(nn.Module):
                 anchor_i[..., 0:1] ** 2 + anchor_i[..., 1:2] ** 2,
             )  # b,1,self.n_anchors,3
             ha = anchor_i[..., 2:3]
-            x_anchor = X[:w, :w].flatten() * (
-                self.xyz_range[3] - self.xyz_range[0]
-            ).view(1, -1, 1, 1).to(bbox.device)
-            y_anchor = Y[:h, :h].flatten() * (
-                (self.xyz_range[4] - self.xyz_range[1]) / 2
-            ).view(1, -1, 1, 1).to(bbox.device)
+
+            x_anchor = (
+                (X[:w, :w].flatten() * (self.xyz_range[3] - self.xyz_range[0]))
+                .view(1, -1, 1, 1)
+                .to(bbox.device)
+            )
+            y_anchor = (
+                (Y[:h, :h].flatten() * ((self.xyz_range[4] - self.xyz_range[1]) / 2))
+                .view(1, -1, 1, 1)
+                .to(bbox.device)
+            )
             z_anchor = (self.xyz_range[5] - self.xyz_range[2]) / 2
             a = (bbox[..., 0:1] * da + x_anchor).view(n_batch, -1, 1)  # dx + cx
             b = (bbox[..., 1:2] * da + y_anchor).view(n_batch, -1, 1)  # dy + cy

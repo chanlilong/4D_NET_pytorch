@@ -1,4 +1,7 @@
 *.*_cache
-**___pycache__
+**__pycache__
 models/losses/rotated_iou_loss
 evaluation_code
+weights
+prediction_eval
+tensorboard_logs

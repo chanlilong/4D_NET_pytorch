@@ -47,8 +47,10 @@ WORKDIR /mmdet3d
 RUN git clone https://github.com/open-mmlab/mmdetection3d.git -b dev-1.x /mmdet3d
 RUN pip install -v -e .
 
-# WORKDIR /code
-# COPY requirements.txt ./requirements.txt
-# RUN python -m uv pip install -r requirements.txt --system --no-cache-dir 
+RUN conda init bash
+WORKDIR /code
+RUN git clone https://github.com/chanlilong/4D_NET_pytorch.git -b refactor --recursive /code
+RUN python -m uv pip install -r pyproject.toml --system --no-cache-dir 
+RUN cd /code/models/losses/rotated_iou_loss/cuda_op && python setup.py install
 
 ENTRYPOINT [ "/bin/bash" ]
