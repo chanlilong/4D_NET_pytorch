@@ -1,3 +1,4 @@
+# ruff: noqa:  N806, N803, N802, E722, E501
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,8 +16,41 @@ from utils.point_cloud_ops import points_to_voxel
 
 if TYPE_CHECKING:
     from reader import Label3D
+    from torch import Tensor
 
 pd.options.mode.chained_assignment = None
+
+KittiReturnType = (
+    tuple[
+        Tensor,
+        tuple[Tensor, Tensor, Tensor],
+        tuple[Tensor, Tensor, Tensor],
+        dict[str, Tensor],
+        Calibration,
+    ]
+    | tuple[
+        Tensor,
+        tuple[Tensor, Tensor, Tensor],
+        tuple[Tensor, Tensor, Tensor],
+        dict[str, Tensor],
+    ]
+)
+
+KittiCollateReturnType = (
+    tuple[
+        Tensor,
+        list[Tensor],
+        list[Tensor],
+        list[dict[str, Tensor]],
+        list[Calibration],
+    ]
+    | tuple[
+        Tensor,
+        list[Tensor],
+        list[Tensor],
+        list[dict[str, Tensor]],
+    ]
+)
 
 
 class KittiDataset(Dataset):
@@ -71,6 +105,7 @@ class KittiDataset(Dataset):
         self.y_size = (self.xyz_range[4] - self.xyz_range[1]) // self.xy_voxel_size[1]
         self.x_offset = self.xy_voxel_size[0] / 2 + self.xyz_range[0]
         self.y_offset = self.xy_voxel_size[1] / 2 + self.xyz_range[1]
+        self.gen = np.random.Generator(np.random.PCG64(seed=42))
 
         self.classes = {
             'Car': 0,
@@ -169,7 +204,7 @@ class KittiDataset(Dataset):
 
     def get_calib(self, idx: int) -> tuple[np.ndarray, np.ndarray]:
         calib_df = pd.read_csv(self.calib_train[idx], sep=' ', header=None)
-        calib_df.index = [x.replace(':', '') for x in calib_df.iloc[:, 0].values]
+        calib_df.index = [x.replace(':', '') for x in calib_df.iloc[:, 0].to_numpy()]
         calib_df = calib_df.drop(0, axis=1)
         Tr_velo_to_cam = calib_df.loc['Tr_velo_to_cam'].to_numpy().reshape(3, 4)
 
@@ -177,7 +212,7 @@ class KittiDataset(Dataset):
 
         return R, t
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> KittiReturnType:
         if self.return_calib:
             (
                 success,
@@ -199,7 +234,7 @@ class KittiDataset(Dataset):
 
         if not success:
             while not success:
-                idx = np.random.randint(0, len(self))
+                idx = self.gen.integers(0, len(self))
                 if self.return_calib:
                     (
                         success,
@@ -234,7 +269,7 @@ class KittiDataset(Dataset):
                 outputs,
             )
 
-    def get_func(self, idx: int):
+    def get_func(self, idx: int) -> KittiReturnType:
         try:
             if self.return_calib:
                 (
@@ -291,7 +326,7 @@ class KittiDataset(Dataset):
 
         return pillars
 
-    def getitem(self, idx: int):
+    def getitem(self, idx: int) -> KittiReturnType:
         img_file = self.images_train[idx]
         pc_file = self.pc_filenames_train[idx]
         label_file = self.labels_train[idx]
@@ -302,7 +337,7 @@ class KittiDataset(Dataset):
         img = Image.open(img_file).convert('RGB')
         img = img.resize((1242, 375))
         img = np.asarray(img).astype(np.uint8)
-        H, W, C = img.shape
+        H, W, _ = img.shape
         pointcloud = np.fromfile(pc_file, dtype=np.float32).reshape((-1, 4))
         pc_filter = (
             (pointcloud[:, 0] > self.xyz_range[0])
@@ -313,7 +348,7 @@ class KittiDataset(Dataset):
             & (pointcloud[:, 2] < self.xyz_range[5])
         )
         pointcloud = pointcloud[pc_filter]
-        np.random.shuffle(pointcloud)
+        self.gen.shuffle(pointcloud)
         # 1.Voxelize pc to pillars
         voxels, coors, num_points_per_voxel = points_to_voxel(
             pointcloud,
@@ -386,15 +421,15 @@ class KittiDataset(Dataset):
         df['y'] = (-1 * df['y']).copy(deep=True)
         df = df[df['type'] != 'DontCare']
         xy_filter = (
-            (df['x'].values <= self.xyz_range[3])
-            & (df['x'].values >= self.xyz_range[0])
-            & (df['y'].values <= self.xyz_range[4])
-            & (df['y'].values >= self.xyz_range[1])
+            (df['x'].to_numpy() <= self.xyz_range[3])
+            & (df['x'].to_numpy() >= self.xyz_range[0])
+            & (df['y'].to_numpy() <= self.xyz_range[4])
+            & (df['y'].to_numpy() >= self.xyz_range[1])
         )
         df = df[xy_filter]
-        classes_int = [self.classes[l] for l in df['type'].values]
+        classes_int = [self.classes[class_int] for class_int in df['type'].to_numpy()]
 
-        pts = df.iloc[:, 1:].values
+        pts = df.iloc[:, 1:].to_numpy()
         boxes = torch.as_tensor(pts).view(-1, 7).float()
 
         outputs = {}
@@ -421,11 +456,11 @@ class KittiDataset(Dataset):
                 outputs,
             )
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.pc_filenames_train)
 
 
-def KITTI_collate_fn(data):
+def KITTI_collate_fn(data: list[KittiReturnType]) -> KittiCollateReturnType:
     """
     Collate Function for NOAA so that Input/Targets can be concatenated
     """
@@ -448,7 +483,7 @@ def KITTI_collate_fn(data):
     )
 
 
-def KITTI_collate_fn_Wcalib(data):
+def KITTI_collate_fn_Wcalib(data: list[KittiReturnType]) -> KittiCollateReturnType:
     """
     Collate Function for NOAA so that Input/Targets can be concatenated
     """

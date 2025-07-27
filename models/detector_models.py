@@ -365,7 +365,7 @@ class Efficient_Det(nn.Module):
             # print(bbox.shape)
             anchor_i = anchor_i.view(1, 1, self.n_anchors, 3).to(bbox.device)
             # anchor_i = anchor_i
-            n_batch, C, h, w = bbox.shape
+            n_batch, _, h, w = bbox.shape
             bbox = bbox.permute(0, 2, 3, 1).contiguous()
             clss = clss.permute(0, 2, 3, 1).contiguous()
             bbox = bbox.view(n_batch, h * w, self.n_anchors, 7)

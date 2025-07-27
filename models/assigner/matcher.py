@@ -1,4 +1,5 @@
-# ruff: noqa: E501
+# ruff: noqa: E501,N806,E722
+
 # ------------------------------------------------------------------------
 # Modified from DETR (https://github.com/facebookresearch/detr)
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved

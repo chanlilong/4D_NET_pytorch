@@ -1,3 +1,4 @@
+# ruff:noqa:N806,N803
 """Helper methods for loading and parsing KITTI data.
 
 Author: Charles R. Qi
@@ -5,6 +6,9 @@ Date: September 2017
 """
 
 from __future__ import annotations
+
+import contextlib
+from pathlib import Path
 
 import numpy as np
 
@@ -42,7 +46,7 @@ class Calibration:
     TODO(rqi): do matrix multiplication only once for each projection.
     """
 
-    def __init__(self, calib_filepath: str):
+    def __init__(self, calib_filepath: str) -> None:
         calibs = self.read_calib_file(calib_filepath)
         # Projection matrix from rect camera coord to image2 coord
         self.P = calibs['P2']
@@ -63,12 +67,12 @@ class Calibration:
         self.b_x = self.P[0, 3] / (-self.f_u)  # relative
         self.b_y = self.P[1, 3] / (-self.f_v)
 
-    def read_calib_file(self, filepath):
+    def read_calib_file(self, filepath: str | Path) -> dict[str, np.ndarray]:
         """Read in a calibration file and parse into a dictionary.
         Ref: https://github.com/utiasSTARS/pykitti/blob/master/pykitti/utils.py
         """
         data = {}
-        with open(filepath) as f:
+        with Path(filepath).open() as f:
             for line in f:
                 line = line.rstrip()
                 if len(line) == 0:
@@ -76,14 +80,12 @@ class Calibration:
                 key, value = line.split(':', 1)
                 # The only non-float values in these files are dates, which
                 # we don't care about anyway
-                try:
+                with contextlib.suppress(ValueError):
                     data[key] = np.array([float(x) for x in value.split()])
-                except ValueError:
-                    pass
 
         return data
 
-    def cart2hom(self, pts_3d):
+    def cart2hom(self, pts_3d: np.ndarray) -> np.ndarray:
         """Input: nx3 points in Cartesian
         Oupput: nx4 points in Homogeneous by pending 1
         """
@@ -94,37 +96,37 @@ class Calibration:
     # ===========================
     # ------- 3d to 3d ----------
     # ===========================
-    def project_velo_to_ref(self, pts_3d_velo):
+    def project_velo_to_ref(self, pts_3d_velo: np.ndarray) -> np.ndarray:
         pts_3d_velo = self.cart2hom(pts_3d_velo)  # nx4
         return np.dot(pts_3d_velo, np.transpose(self.V2C))
 
-    def project_ref_to_velo(self, pts_3d_ref):
+    def project_ref_to_velo(self, pts_3d_ref: np.ndarray) -> np.ndarray:
         pts_3d_ref = self.cart2hom(pts_3d_ref)  # nx4
         return np.dot(pts_3d_ref, np.transpose(self.C2V))
 
-    def project_rect_to_ref(self, pts_3d_rect):
+    def project_rect_to_ref(self, pts_3d_rect: np.ndarray) -> np.ndarray:
         """Input and Output are nx3 points"""
         return np.transpose(np.dot(np.linalg.inv(self.R0), np.transpose(pts_3d_rect)))
 
-    def project_ref_to_rect(self, pts_3d_ref):
+    def project_ref_to_rect(self, pts_3d_ref: np.ndarray) -> np.ndarray:
         """Input and Output are nx3 points"""
         return np.transpose(np.dot(self.R0, np.transpose(pts_3d_ref)))
 
-    def project_rect_to_velo(self, pts_3d_rect):
+    def project_rect_to_velo(self, pts_3d_rect: np.ndarray) -> np.ndarray:
         """Input: nx3 points in rect camera coord.
         Output: nx3 points in velodyne coord.
         """
         pts_3d_ref = self.project_rect_to_ref(pts_3d_rect)
         return self.project_ref_to_velo(pts_3d_ref)
 
-    def project_velo_to_rect(self, pts_3d_velo):
+    def project_velo_to_rect(self, pts_3d_velo: np.ndarray) -> np.ndarray:
         pts_3d_ref = self.project_velo_to_ref(pts_3d_velo)
         return self.project_ref_to_rect(pts_3d_ref)
 
     # ===========================
     # ------- 3d to 2d ----------
     # ===========================
-    def project_rect_to_image(self, pts_3d_rect):
+    def project_rect_to_image(self, pts_3d_rect: np.ndarray) -> np.ndarray:
         """Input: nx3 points in rect camera coord.
         Output: nx2 points in image2 coord.
         """
@@ -134,7 +136,7 @@ class Calibration:
         pts_2d[:, 1] /= pts_2d[:, 2]
         return pts_2d[:, 0:2]
 
-    def project_velo_to_image(self, pts_3d_velo):
+    def project_velo_to_image(self, pts_3d_velo: np.ndarray) -> np.ndarray:
         """Input: nx3 points in velodyne coord.
         Output: nx2 points in image2 coord.
         """
@@ -144,7 +146,7 @@ class Calibration:
     # ===========================
     # ------- 2d to 3d ----------
     # ===========================
-    def project_image_to_rect(self, uv_depth):
+    def project_image_to_rect(self, uv_depth: np.ndarray) -> np.ndarray:
         """Input: nx3 first two channels are uv, 3rd channel
                is depth in rect camera coord.
         Output: nx3 points in rect camera coord.
@@ -158,12 +160,12 @@ class Calibration:
         pts_3d_rect[:, 2] = uv_depth[:, 2]
         return pts_3d_rect
 
-    def project_image_to_velo(self, uv_depth):
+    def project_image_to_velo(self, uv_depth: np.ndarray) -> np.ndarray:
         pts_3d_rect = self.project_image_to_rect(uv_depth)
         return self.project_rect_to_velo(pts_3d_rect)
 
 
-def inverse_rigid_trans(Tr):
+def inverse_rigid_trans(Tr: np.ndarray) -> np.ndarray:
     """Inverse a rigid body transform matrix (3x4 as [R|t])
     [R'|-R't; 0|1]
     """
@@ -201,23 +203,13 @@ def transform_from_rot_trans(R: np.ndarray, t: np.ndarray) -> np.ndarray:
     return np.vstack((np.hstack([R, t]), [0, 0, 0, 1]))
 
 
-def read_label(label_filename):
-    lines = [line.rstrip() for line in open(label_filename)]
-    objects = [Object3d(line) for line in lines]
-    return objects
-
-
-def load_image(img_filename):
-    return cv2.imread(img_filename)
-
-
-def load_velo_scan(velo_filename):
+def load_velo_scan(velo_filename: str | Path) -> np.ndarray:
     scan = np.fromfile(velo_filename, dtype=np.float32)
     scan = scan.reshape((-1, 4))
     return scan
 
 
-def project_to_image(pts_3d, P):
+def project_to_image(pts_3d: np.ndarray, P: np.ndarray) -> np.ndarray:
     """Project 3d points to image plane.
 
     Usage: pts_2d = projectToImage(pts_3d, P)
@@ -240,7 +232,7 @@ def project_to_image(pts_3d, P):
     return pts_2d[:, 0:2]
 
 
-def compute_orientation_3d(obj, P):
+def compute_orientation_3d(obj: object, P: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Takes an object and a projection matrix (P) and projects the 3d
     object orientation vector into the image plane.
     Returns:

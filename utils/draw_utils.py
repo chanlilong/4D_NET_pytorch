@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import cv2
 import numpy as np
 from matplotlib.lines import Line2D
+
 from .calibration_util import roty
 
 if TYPE_CHECKING:
