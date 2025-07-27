@@ -1,0 +1,56 @@
+ARG PYTORCH="2.4.1"
+ARG CUDA="12.1"
+ARG CUDNN="9"
+
+FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TORCH_CUDA_ARCH_LIST="8.6+PTX"
+ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
+ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
+
+# To fix GPG key error when running apt-get update
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
+
+
+RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 wget cmake build-essential screen\
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install mmengine, mmcv, and mmdetection
+WORKDIR /mmcv
+ENV FORCE_CUDA="1"
+ENV MAX_JOBS=10
+RUN python -m pip install pip --upgrade
+RUN pip install uv
+RUN wget https://github.com/open-mmlab/mmcv/archive/refs/tags/v2.0.1.tar.gz -O /mmcv.tar.gz \
+    && tar -xzvf /mmcv.tar.gz -C / \
+    && mv /mmcv-2.0.1 /mmcv \
+    && rm /mmcv.tar.gz
+RUN ls
+RUN python -m uv pip install -r ./mmcv-2.0.1/requirements/optional.txt --system
+RUN python -m uv pip install setuptools --upgrade --force-reinstall --system
+COPY ./docker/setup_files/setup_mmcv.py ./mmcv-2.0.1/setup.py
+RUN python -m uv pip install setuptools==57.2.0 --system
+RUN cd ./mmcv-2.0.1 && pip install -e . -v
+RUN python -m uv pip install mmdet==3.2.0 --system
+
+
+# Install MMRotate
+WORKDIR /mmrotate
+RUN git clone https://github.com/open-mmlab/mmrotate.git -b dev-1.x /mmrotate
+RUN python -m uv pip install -r requirements/build.txt --system --no-cache-dir 
+RUN python -m uv pip install --no-cache-dir -e . --system
+
+WORKDIR /mmdet3d
+RUN git clone https://github.com/open-mmlab/mmdetection3d.git -b dev-1.x /mmdet3d
+RUN pip install -v -e .
+
+RUN conda init bash
+WORKDIR /code
+RUN git clone https://github.com/chanlilong/4D_NET_pytorch.git -b refactor --recursive /code
+RUN python -m uv pip install -r pyproject.toml --system --no-cache-dir 
+RUN cd /code/models/losses/rotated_iou_loss/cuda_op && python setup.py install
+
+ENTRYPOINT [ "/bin/bash" ]

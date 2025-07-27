@@ -1,0 +1,6 @@
+*.*_cache
+**__pycache__
+evaluation_code
+weights
+prediction_eval
+tensorboard_logs
