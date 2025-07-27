@@ -35,6 +35,17 @@
 
 ## How to Train/Infer
 
+1. Build the docker container
+
+```bash
+docker buildx build -f ./docker/dockerfile -t 4dnet:0.1 .
+```
+
+2. Once in the container environment, train using the command:
+
 ```bash
 python -m train /mnt/datasets/kitti_dataset/training --epochs 100 --tensorboard_logs ./tensorboard_logs/training
 ```
+
+3. During training, plots of the model's inference will be logged in tensorboard:
+   ![PseudoImages](./images/tensorboard.png)
