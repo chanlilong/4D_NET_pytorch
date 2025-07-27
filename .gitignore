@@ -1,6 +1,5 @@
 *.*_cache
 **__pycache__
-models/losses/rotated_iou_loss
 evaluation_code
 weights
 prediction_eval
