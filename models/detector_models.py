@@ -1,4 +1,4 @@
-# ruff: noqa: N801, N806
+# ruff: noqa: N801, N806, N812
 from __future__ import annotations
 
 import math

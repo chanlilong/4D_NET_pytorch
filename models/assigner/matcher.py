@@ -310,7 +310,7 @@ class Criterion(nn.Module):
     def __init__(
         self,
         num_classes: int,
-        losses: list[str] = ['labels', 'cardinality', 'boxes'],
+        losses: list[str] | None = None,
         focal_alpha: float = 0.25,
     ) -> None:
         """Create the criterion.
@@ -321,6 +321,8 @@ class Criterion(nn.Module):
             losses: list of all the losses to be applied. See get_loss for list of available losses.
             focal_alpha: alpha in Focal Loss
         """
+        if losses is None:
+            losses = ['labels', 'cardinality', 'boxes']
         super().__init__()
         self.num_classes = num_classes
         self.matcher = HungarianMatcher()

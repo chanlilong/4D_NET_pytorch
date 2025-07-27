@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 # ------------------------------------------------------------------------
 # Deformable DETR
 # Copyright (c) 2020 SenseTime. All Rights Reserved.

@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
+from torch import Tensor
 from torch.utils.data import Dataset
 
 from utils.calibration_util import Calibration
@@ -16,7 +17,6 @@ from utils.point_cloud_ops import points_to_voxel
 
 if TYPE_CHECKING:
     from reader import Label3D
-    from torch import Tensor
 
 pd.options.mode.chained_assignment = None
 

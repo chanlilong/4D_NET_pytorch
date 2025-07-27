@@ -100,7 +100,7 @@ class KittiDataReader(DataReader):
             ],
             dtype=np.float32,
         )
-        R, t = Tr_velo_to_cam[:, :3], Tr_velo_to_cam[:, 3]
+        R, t = Tr_velo_to_cam[:, :3], Tr_velo_to_cam[:, 3]  # noqa: N806
         return R, t
 
 

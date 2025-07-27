@@ -150,7 +150,7 @@ def points_to_voxel(
     num_points_per_voxel = np.zeros(shape=(max_voxels,), dtype=np.int32)
     coor_to_voxelidx = -np.ones(shape=voxelmap_shape, dtype=np.int32)
     voxels = np.zeros(
-        shape=(max_voxels, max_points, points.shape[-1]), dtype=points.dtype
+        shape=(max_voxels, max_points, points.shape[-1]), dtype=points.dtype,
     )
     coors = np.zeros(shape=(max_voxels, 3), dtype=np.int32)
     if reverse_index:
@@ -188,7 +188,7 @@ def points_to_voxel(
 
 @numba.jit(nopython=True)
 def bound_points_jit(
-    points: np.ndarray, upper_bound: np.ndarray, lower_bound: np.ndarray
+    points: np.ndarray, upper_bound: np.ndarray, lower_bound: np.ndarray,
 ) -> np.ndarray:
     # to use nopython=True, np.bool is not supported. so you need
     # convert result to np.bool after this function.

@@ -1,3 +1,4 @@
+# ruff: noqa: E741, N806
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -21,7 +22,7 @@ def draw_rectangle(
     theta: float,
     width: float,
     height: float,
-    color=(1, 1, 1),
+    color: tuple[int, int, int] = (1, 1, 1),
 ) -> None:
     c, s = np.cos(theta), np.sin(theta)
     R = np.matrix(f'{c} {-s}; {s} {c}')

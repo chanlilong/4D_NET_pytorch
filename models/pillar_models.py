@@ -1,4 +1,4 @@
-# ruff: noqa: N801
+# ruff: noqa: N801, N806, N803
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -80,7 +80,7 @@ class Pseudo_IMG_Scatter_Pillar(torch.nn.Module):
         coord: Tensor,
         contains_pillars: Tensor,
     ) -> Tensor:
-        batch, n_pillars, n_features = pillars.shape  # torch.Size([4, 16384, 64])
+        batch, _, n_features = pillars.shape  # torch.Size([4, 16384, 64])
         masks = (contains_pillars == 1).bool().view(batch, -1)
         filtered_outs = pillars[masks.view(batch, -1)]  # torch.Size([11944, 64])
         filtered_coors = coord[masks.view(batch, -1)]
