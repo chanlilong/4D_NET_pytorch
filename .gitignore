@@ -1,2 +1,4 @@
 *.*_cache
 **___pycache__
+models/losses/rotated_iou_loss
+evaluation_code
